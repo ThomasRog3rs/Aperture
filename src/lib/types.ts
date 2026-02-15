@@ -27,5 +27,7 @@ export type Movie = {
   personalRating: number | null;
   errorMessage: string | null;
   lastSyncedAt: number;
+  /** When true, card is blurred on the main library view (unless searching/filtering). */
+  xxxRated: boolean;
 };
 

@@ -74,6 +74,7 @@ export default function MovieDetailPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [savingGenres, setSavingGenres] = useState(false);
+  const [savingXxxRated, setSavingXxxRated] = useState(false);
   const [notice, setNotice] = useState<{
     tone: "info" | "success" | "error";
     message: string;
@@ -213,6 +214,41 @@ export default function MovieDetailPage() {
       setSaving(false);
     }
   }, [movie, title, posterInput]);
+
+  const handleXxxRatedChange = useCallback(
+    async (checked: boolean) => {
+      if (!movie) return;
+      setSavingXxxRated(true);
+      setNotice(null);
+      try {
+        const response = await fetch(`/api/movies/${movie.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ xxxRated: checked }),
+        });
+        const data = (await response.json()) as MovieResponse;
+        if (!response.ok || !data.movie) {
+          throw new Error(data.error || "Failed to update.");
+        }
+        setMovie(data.movie);
+        setNotice({
+          tone: "success",
+          message: checked
+            ? "Marked as XXX rated (blurred on main screen)."
+            : "Removed XXX rated mark.",
+        });
+      } catch (error) {
+        setNotice({
+          tone: "error",
+          message:
+            error instanceof Error ? error.message : "Failed to update.",
+        });
+      } finally {
+        setSavingXxxRated(false);
+      }
+    },
+    [movie]
+  );
 
   const handleSaveGenres = useCallback(
     async (nextGenres: string[]) => {
@@ -398,6 +434,21 @@ export default function MovieDetailPage() {
                     </a>
                   ) : null}
                 </div>
+                <label className="mt-4 flex cursor-pointer items-center gap-3 text-sm text-muted">
+                  <input
+                    type="checkbox"
+                    checked={movie.xxxRated ?? false}
+                    onChange={(e) => handleXxxRatedChange(e.target.checked)}
+                    disabled={savingXxxRated}
+                    className="h-4 w-4 rounded border-border bg-background text-accent focus:ring-accent/40"
+                  />
+                  <span>
+                    XXX rated
+                    <span className="ml-1.5 text-xs text-faint">
+                      (blurred on main screen until search/filter)
+                    </span>
+                  </span>
+                </label>
                 <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-muted">
                   <div className="rounded-xl border border-border bg-background/40 p-3">
                     <p className="text-faint">Year</p>

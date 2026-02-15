@@ -43,7 +43,8 @@ function ensureSchema(db: DbInstance) {
       youtubeTrailerKey TEXT NULL,
       personalRating INTEGER NULL,
       errorMessage TEXT NULL,
-      lastSyncedAt INTEGER NOT NULL
+      lastSyncedAt INTEGER NOT NULL,
+      xxxRated INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE INDEX IF NOT EXISTS idx_movies_tmdb_id ON movies (tmdbId);
@@ -60,6 +61,9 @@ function ensureSchema(db: DbInstance) {
   }
   if (!columnNames.has("userGenresJson")) {
     db.exec("ALTER TABLE movies ADD COLUMN userGenresJson TEXT NOT NULL DEFAULT '[]'");
+  }
+  if (!columnNames.has("xxxRated")) {
+    db.exec("ALTER TABLE movies ADD COLUMN xxxRated INTEGER NOT NULL DEFAULT 0");
   }
 }
 

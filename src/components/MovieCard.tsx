@@ -11,10 +11,13 @@ type MovieCardProps = {
   movie: Movie;
   onPlay: (movie: Movie) => void;
   onRate: (id: string, rating: number | null) => void;
+  /** When true, blur the card if movie is XXX rated (e.g. on main browse, not when searching/filtering). */
+  blurIfXxxRated?: boolean;
 };
 
-export function MovieCard({ movie, onPlay, onRate }: MovieCardProps) {
+export function MovieCard({ movie, onPlay, onRate, blurIfXxxRated = false }: MovieCardProps) {
   const posterUrl = tmdbImageUrl(movie.posterPath, "w342");
+  const shouldBlur = blurIfXxxRated && movie.xxxRated;
   const fileMissing = movie.errorMessage
     ? movie.errorMessage.toLowerCase().includes("no video file")
     : false;
@@ -36,12 +39,13 @@ export function MovieCard({ movie, onPlay, onRate }: MovieCardProps) {
       transition={{ type: "spring", stiffness: 300, damping: 24 }}
       className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.4)] transition-shadow duration-300 hover:shadow-[0_16px_48px_rgba(212,168,83,0.08)]"
     >
-      {/* ── Poster ─────────────────────── */}
-      <Link
-        href={`/movies/${movie.id}`}
-        aria-label={`Open details for ${movie.titleClean}`}
-        className="relative block aspect-[2/3] w-full overflow-hidden bg-background"
-      >
+      <div className={shouldBlur ? "blur-xl select-none" : ""}>
+        {/* ── Poster ─────────────────────── */}
+        <Link
+          href={`/movies/${movie.id}`}
+          aria-label={`Open details for ${movie.titleClean}`}
+          className="relative block aspect-[2/3] w-full overflow-hidden bg-background"
+        >
         {posterUrl ? (
           <Image
             src={posterUrl}
@@ -61,10 +65,10 @@ export function MovieCard({ movie, onPlay, onRate }: MovieCardProps) {
         )}
         {/* Warm cinematic gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-[#0d0c0a] via-[#0d0c0a]/20 to-transparent opacity-85" />
-      </Link>
+        </Link>
 
-      {/* ── Details ────────────────────── */}
-      <div className="flex flex-1 flex-col gap-3 p-4">
+        {/* ── Details ────────────────────── */}
+        <div className="flex flex-1 flex-col gap-3 p-4">
         <div className="flex items-start justify-between gap-3">
           <Link
             href={`/movies/${movie.id}`}
@@ -153,6 +157,7 @@ export function MovieCard({ movie, onPlay, onRate }: MovieCardProps) {
             ))}
           </select>
         </div>
+      </div>
       </div>
     </motion.div>
   );

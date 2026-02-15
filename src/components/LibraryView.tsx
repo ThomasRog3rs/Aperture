@@ -237,6 +237,7 @@ export function LibraryView() {
             movies={movies}
             onPlay={handlePlay}
             onRate={handleRate}
+            blurXxxRated={true}
           />
         ) : null}
       </main>

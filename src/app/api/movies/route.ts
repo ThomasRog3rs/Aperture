@@ -44,11 +44,11 @@ export async function GET(request: Request) {
 
   const rows = listMovies({ q, genre, minPersonalRating, sort });
   const movies = rows.map((row) => {
-    const { genresJson, userGenresJson, ...rest } = row;
+    const { genresJson, userGenresJson, xxxRated, ...rest } = row;
     const omdbGenres = parseGenres(genresJson);
     const userGenres = parseGenres(userGenresJson);
     const genres = mergeGenres(omdbGenres, userGenres);
-    return { ...rest, genres, omdbGenres, userGenres };
+    return { ...rest, genres, omdbGenres, userGenres, xxxRated: Boolean(xxxRated) };
   });
 
   return NextResponse.json({ movies });

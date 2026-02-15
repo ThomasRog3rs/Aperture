@@ -25,6 +25,7 @@ export type MovieUpsert = {
 export type MovieRow = Omit<MovieUpsert, "genres" | "userGenres"> & {
   genresJson: string;
   userGenresJson: string;
+  xxxRated: number;
 };
 
 export type MovieQuery = {
@@ -211,6 +212,7 @@ export type MovieUpdate = {
   errorMessage?: string | null;
   lastSyncedAt?: number;
   personalRating?: number | null;
+  xxxRated?: number | null;
 };
 
 export function updateMovie(id: string, updates: MovieUpdate) {
