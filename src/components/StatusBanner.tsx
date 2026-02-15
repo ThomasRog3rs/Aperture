@@ -27,10 +27,10 @@ export function StatusBanner({ tone = "info", message }: StatusBannerProps) {
 
   return (
     <div
-      className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-sm ${classes}`}
+      className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-sm 2xl:px-5 2xl:py-4 2xl:text-base ${classes}`}
       role="status"
     >
-      <Icon className="h-4 w-4 shrink-0" />
+      <Icon className="h-4 w-4 shrink-0 2xl:h-5 2xl:w-5" />
       {message}
     </div>
   );

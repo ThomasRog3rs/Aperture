@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Check, Play, Star, AlertTriangle, Video } from "lucide-react";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { formatRating, formatRuntime, tmdbImageUrl } from "@/lib/format";
 import type { Movie } from "@/lib/types";
 
@@ -17,7 +18,9 @@ type MovieCardProps = {
 };
 
 export function MovieCard({ movie, onPlay, onRate, onWatched, blurIfXxxRated = false }: MovieCardProps) {
-  const posterUrl = tmdbImageUrl(movie.posterPath, "w342");
+  const isLargeScreen = useMediaQuery("(min-width: 1536px)");
+  const posterSize = isLargeScreen ? "w780" : "w342";
+  const posterUrl = tmdbImageUrl(movie.posterPath, posterSize);
   const shouldBlur = blurIfXxxRated && movie.xxxRated;
   const fileMissing = movie.errorMessage
     ? movie.errorMessage.toLowerCase().includes("no video file")
@@ -52,7 +55,7 @@ export function MovieCard({ movie, onPlay, onRate, onWatched, blurIfXxxRated = f
             src={posterUrl}
             alt={movie.titleClean}
             fill
-            sizes="(max-width: 768px) 50vw, (max-width: 1200px) 25vw, 18vw"
+            sizes="(max-width: 768px) 50vw, (max-width: 1200px) 25vw, (min-width: 1536px) 20vw, 18vw"
             className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06]"
             onError={handlePosterError}
           />
@@ -70,20 +73,19 @@ export function MovieCard({ movie, onPlay, onRate, onWatched, blurIfXxxRated = f
 
         {/* ── Details ────────────────────── */}
         <div className="flex flex-1 flex-col gap-3 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <Link
-            href={`/movies/${movie.id}`}
-            className="min-w-0"
-            aria-label={`Open details for ${movie.titleClean}`}
-          >
-            <h3 className="truncate font-serif text-base font-semibold text-foreground">
-              {movie.titleClean}
-            </h3>
-            <p className="text-xs text-muted">
-              {movie.year ?? "\u2014"} \u00b7 {formatRuntime(movie.runtimeMinutes)}
-            </p>
-          </Link>
-          <div className="flex shrink-0 items-center gap-1.5">
+        <Link
+          href={`/movies/${movie.id}`}
+          className="block min-w-0"
+          aria-label={`Open details for ${movie.titleClean}`}
+        >
+          <h3 className="line-clamp-2 font-serif text-lg font-bold tracking-tight text-foreground 2xl:text-2xl">
+            {movie.titleClean}
+          </h3>
+          <p className="mt-1 text-xs text-muted 2xl:text-sm">
+            {movie.year ?? "\u2014"} · {formatRuntime(movie.runtimeMinutes)}
+          </p>
+        </Link>
+        <div className="flex items-center gap-1.5">
             {onWatched ? (
               <button
                 type="button"
@@ -91,7 +93,7 @@ export function MovieCard({ movie, onPlay, onRate, onWatched, blurIfXxxRated = f
                   e.preventDefault();
                   onWatched(movie.id, !movie.watched);
                 }}
-                className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                className={`cursor-pointer flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors 2xl:px-3 2xl:py-2 2xl:text-sm ${
                   movie.watched
                     ? "bg-emerald-500/20 text-emerald-400"
                     : "border border-border bg-surface text-muted hover:border-border-hover hover:text-foreground"
@@ -99,19 +101,18 @@ export function MovieCard({ movie, onPlay, onRate, onWatched, blurIfXxxRated = f
                 title={movie.watched ? "Mark as unwatched" : "Mark as watched"}
                 aria-label={movie.watched ? "Mark as unwatched" : "Mark as watched"}
               >
-                <Check className={`h-3.5 w-3.5 ${movie.watched ? "" : "opacity-40"}`} />
+                <Check className={`h-3.5 w-3.5 2xl:h-4 2xl:w-4 ${movie.watched ? "" : "opacity-40"}`} />
                 {movie.watched ? "Watched" : "Mark watched"}
               </button>
             ) : null}
-            <div className="flex items-center gap-1 rounded-md bg-accent-muted px-2 py-1 text-xs font-medium text-accent">
-              <Star className="h-3.5 w-3.5" />
+            <div className="flex items-center gap-1 rounded-md bg-accent-muted px-2 py-1 text-xs font-medium text-accent 2xl:px-3 2xl:py-2 2xl:text-sm">
+              <Star className="h-3.5 w-3.5 2xl:h-4 2xl:w-4" />
               {formatRating(movie.tmdbRating)}
             </div>
-          </div>
         </div>
 
         {/* ── Genre pills ──────────────── */}
-        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted 2xl:text-sm">
           {movie.genres.slice(0, 3).map((genre) => (
             <span
               key={genre}
@@ -130,7 +131,7 @@ export function MovieCard({ movie, onPlay, onRate, onWatched, blurIfXxxRated = f
               className="inline-flex items-center gap-1 rounded-md border border-error/30 px-2 py-0.5 text-error"
               title={movie.errorMessage}
             >
-              <AlertTriangle className="h-3 w-3" />
+              <AlertTriangle className="h-3 w-3 2xl:h-4 2xl:w-4" />
               {errorLabel}
             </span>
           ) : null}
@@ -141,9 +142,9 @@ export function MovieCard({ movie, onPlay, onRate, onWatched, blurIfXxxRated = f
           <button
             onClick={() => onPlay(movie)}
             disabled={playDisabled}
-            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-background transition-all duration-200 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+            className="cursor-pointer flex flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-background transition-all duration-200 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 2xl:px-3 2xl:py-2 2xl:text-sm"
           >
-            <Play className="h-3.5 w-3.5" />
+            <Play className="h-3.5 w-3.5 2xl:h-4 2xl:w-4" />
             Play
           </button>
           {movie.youtubeTrailerKey ? (
@@ -151,7 +152,7 @@ export function MovieCard({ movie, onPlay, onRate, onWatched, blurIfXxxRated = f
               href={`https://www.youtube.com/watch?v=${movie.youtubeTrailerKey}`}
               target="_blank"
               rel="noreferrer"
-              className="rounded-lg border border-border px-3 py-2 text-xs text-muted transition-colors hover:border-border-hover hover:text-foreground"
+              className="rounded-lg border border-border px-3 py-2 text-xs text-muted transition-colors hover:border-border-hover hover:text-foreground 2xl:px-3 2xl:py-2 2xl:text-sm"
             >
               Trailer
             </a>
@@ -159,7 +160,7 @@ export function MovieCard({ movie, onPlay, onRate, onWatched, blurIfXxxRated = f
         </div>
 
         {/* ── Personal rating ──────────── */}
-        <div className="flex items-center justify-between text-xs text-muted">
+        <div className="flex items-center justify-between text-xs text-muted 2xl:text-sm">
           <span>Your rating</span>
           <select
             value={movie.personalRating ?? ""}
@@ -169,7 +170,7 @@ export function MovieCard({ movie, onPlay, onRate, onWatched, blurIfXxxRated = f
                 event.target.value === "" ? null : Number(event.target.value)
               )
             }
-            className="rounded-md border border-border bg-surface px-3 py-1 text-xs text-foreground transition-colors hover:border-border-hover"
+            className="rounded-md border border-border bg-surface px-3 py-1 text-xs text-foreground transition-colors hover:border-border-hover 2xl:px-3 2xl:py-2 2xl:text-sm"
           >
             <option value="">{"\u2014"}</option>
             {Array.from({ length: 11 }).map((_, index) => (

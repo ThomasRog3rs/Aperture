@@ -382,46 +382,46 @@ export default function MovieDetailPage() {
   return (
     <div className="min-h-screen">
       <header className="border-b border-border bg-background/80 backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-4 px-6 py-5">
+        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-4 px-6 py-5 2xl:max-w-screen-2xl">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground"
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground 2xl:py-2 2xl:text-base"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-4 w-4 2xl:h-5 2xl:w-5" />
             Back to library
           </Link>
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-faint">
+            <p className="text-xs uppercase tracking-[0.3em] text-faint 2xl:text-sm">
               Movie details
             </p>
-            <h1 className="font-serif text-xl font-semibold text-foreground">
+            <h1 className="font-serif text-2xl font-bold tracking-tight text-foreground 2xl:text-4xl">
               {movie?.titleClean ?? "Loading..."}
             </h1>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8">
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8 2xl:max-w-screen-2xl">
         {notice ? <StatusBanner tone={notice.tone} message={notice.message} /> : null}
 
         {loading ? (
-          <div className="flex items-center justify-center gap-3 rounded-2xl border border-border bg-surface p-10 text-sm text-muted">
+          <div className="flex items-center justify-center gap-3 rounded-2xl border border-border bg-surface p-10 text-sm text-muted 2xl:text-base">
             <Loader2 className="h-5 w-5 animate-spin text-accent" />
             Loading movie...
           </div>
         ) : null}
 
         {!loading && !movie ? (
-          <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-surface p-12 text-center">
-            <p className="font-serif text-lg font-medium text-foreground">
+          <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-surface p-12 text-center 2xl:p-16">
+            <p className="font-serif text-lg font-medium text-foreground 2xl:text-xl">
               Movie not found
             </p>
-            <p className="text-sm text-muted">
+            <p className="text-sm text-muted 2xl:text-base">
               The movie you are looking for could not be loaded.
             </p>
             <Link
               href="/"
-              className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground"
+              className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground 2xl:py-2 2xl:text-base"
             >
               Return to library
             </Link>
@@ -454,9 +454,9 @@ export default function MovieDetailPage() {
                   <button
                     onClick={handlePlay}
                     disabled={playing || !movie.filePath}
-                    className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 2xl:py-2 2xl:text-base"
                   >
-                    <Play className="h-4 w-4" />
+                    <Play className="h-4 w-4 2xl:h-5 2xl:w-5" />
                     {playing ? "Launching..." : "Play movie"}
                   </button>
                   {movie.youtubeTrailerKey ? (
@@ -464,13 +464,13 @@ export default function MovieDetailPage() {
                       href={`https://www.youtube.com/watch?v=${movie.youtubeTrailerKey}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground"
+                      className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground 2xl:py-2 2xl:text-base"
                     >
                       Trailer
                     </a>
                   ) : null}
                 </div>
-                <label className="mt-4 flex cursor-pointer items-center gap-3 text-sm text-muted">
+                <label className="mt-4 flex cursor-pointer items-center gap-3 text-sm text-muted 2xl:text-base">
                   <input
                     type="checkbox"
                     checked={movie.xxxRated ?? false}
@@ -485,7 +485,7 @@ export default function MovieDetailPage() {
                     </span>
                   </span>
                 </label>
-                <label className="mt-3 flex cursor-pointer items-center gap-3 text-sm text-muted">
+                <label className="mt-3 flex cursor-pointer items-center gap-3 text-sm text-muted 2xl:text-base">
                   <input
                     type="checkbox"
                     checked={movie.watched ?? false}
@@ -495,7 +495,7 @@ export default function MovieDetailPage() {
                   />
                   <span>Watched</span>
                 </label>
-                <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-muted">
+                <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-muted 2xl:text-sm">
                   <div className="rounded-xl border border-border bg-background/40 p-3">
                     <p className="text-faint">Year</p>
                     <p className="mt-1 text-sm text-foreground">
@@ -516,7 +516,7 @@ export default function MovieDetailPage() {
                   </div>
                 </div>
               </div>
-              <div className="rounded-2xl border border-border bg-surface p-4 text-sm text-muted">
+              <div className="rounded-2xl border border-border bg-surface p-4 text-sm text-muted 2xl:text-base">
                 <p className="font-medium text-foreground">File-derived title</p>
                 <p className="mt-1">{movie.titleRaw}</p>
               </div>
@@ -525,26 +525,26 @@ export default function MovieDetailPage() {
             <div className="flex flex-col gap-6">
               <div className="rounded-2xl border border-border bg-surface p-6">
                 <div className="flex flex-col gap-4">
-                  <label className="flex flex-col gap-2 text-sm text-muted">
-                    <span className="text-xs uppercase tracking-[0.2em] text-faint">
+                  <label className="flex flex-col gap-2 text-sm text-muted 2xl:text-base">
+                    <span className="text-xs uppercase tracking-[0.2em] text-faint 2xl:text-sm">
                       Display title
                     </span>
                     <input
                       value={title}
                       onChange={(event) => setTitle(event.target.value)}
-                      className="rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60"
+                      className="rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60 2xl:py-2 2xl:text-base"
                       placeholder="Movie title"
                     />
                   </label>
 
-                  <label className="flex flex-col gap-2 text-sm text-muted">
-                    <span className="text-xs uppercase tracking-[0.2em] text-faint">
+                  <label className="flex flex-col gap-2 text-sm text-muted 2xl:text-base">
+                    <span className="text-xs uppercase tracking-[0.2em] text-faint 2xl:text-sm">
                       Poster URL
                     </span>
                     <input
                       value={posterInput}
                       onChange={(event) => setPosterInput(event.target.value)}
-                      className="rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60"
+                      className="rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60 2xl:py-2 2xl:text-base"
                       placeholder="https://..."
                     />
                   </label>
@@ -569,7 +569,7 @@ export default function MovieDetailPage() {
                           onChange={(event) =>
                             setSelectedFolderImage(event.target.value)
                           }
-                          className="min-w-[220px] flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60"
+                          className="min-w-[220px] flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60 2xl:py-2 2xl:text-base"
                         >
                           {folderImages.map((image) => (
                             <option key={image.url} value={image.url}>
@@ -581,7 +581,7 @@ export default function MovieDetailPage() {
                           type="button"
                           onClick={() => setPosterInput(selectedFolderImage)}
                           disabled={!selectedFolderImage}
-                          className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                          className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 2xl:py-2 2xl:text-base"
                         >
                           Use selected
                         </button>
@@ -600,15 +600,15 @@ export default function MovieDetailPage() {
                     <button
                       onClick={handleSave}
                       disabled={saving}
-                      className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                      className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 2xl:py-2 2xl:text-base"
                     >
-                      <Save className="h-4 w-4" />
+                      <Save className="h-4 w-4 2xl:h-5 2xl:w-5" />
                       {saving ? "Saving..." : "Save changes"}
                     </button>
                     <button
                       onClick={handleRefreshPoster}
                       disabled={refreshing}
-                      className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                      className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 2xl:py-2 2xl:text-base"
                     >
                       <RefreshCw
                         className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
@@ -617,7 +617,7 @@ export default function MovieDetailPage() {
                     </button>
                     <button
                       onClick={() => setPosterInput("")}
-                      className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground"
+                      className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground 2xl:py-2 2xl:text-base"
                     >
                       Clear poster
                     </button>
@@ -628,7 +628,7 @@ export default function MovieDetailPage() {
               <div className="rounded-2xl border border-border bg-surface p-6">
                 <div className="flex items-center gap-2">
                   <Tag className="h-4 w-4 text-accent" />
-                  <p className="font-serif text-lg font-medium text-foreground">
+                  <p className="font-serif text-lg font-medium text-foreground 2xl:text-xl">
                     Genres
                   </p>
                 </div>
@@ -689,7 +689,7 @@ export default function MovieDetailPage() {
                       <input
                         value={genreInput}
                         onChange={(event) => setGenreInput(event.target.value)}
-                        className="min-w-[220px] flex-1 rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60"
+                        className="min-w-[220px] flex-1 rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60 2xl:py-2 2xl:text-base"
                         placeholder="Add a genre (e.g. Noir)"
                       />
                       <button
@@ -699,7 +699,7 @@ export default function MovieDetailPage() {
                           handleSaveGenres([...userGenres, next]);
                         }}
                         disabled={savingGenres || !genreInput.trim()}
-                        className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 2xl:py-2 2xl:text-base"
                       >
                         {savingGenres ? "Saving..." : "Add genre"}
                       </button>
@@ -711,7 +711,7 @@ export default function MovieDetailPage() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-border bg-surface p-6 text-sm text-muted">
+              <div className="rounded-2xl border border-border bg-surface p-6 text-sm text-muted 2xl:text-base">
                 <p className="font-medium text-foreground">Database details</p>
                 <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="rounded-xl border border-border bg-background/40 p-3">
@@ -859,7 +859,7 @@ export default function MovieDetailPage() {
                 </dl>
               </div>
 
-              <div className="rounded-2xl border border-border bg-surface p-6 text-sm text-muted">
+              <div className="rounded-2xl border border-border bg-surface p-6 text-sm text-muted 2xl:text-base">
                 <p>
                   Editing the title here overrides the file-derived name. Future
                   syncs will keep your custom title.

@@ -42,18 +42,18 @@ export function TopBar({
 }: TopBarProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-xl">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-5">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-5 2xl:max-w-screen-2xl">
         {/* ── Brand row ────────────────────── */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-muted text-accent">
-              <Aperture className="h-5 w-5" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-muted text-accent 2xl:h-12 2xl:w-12">
+              <Aperture className="h-5 w-5 2xl:h-6 2xl:w-6" />
             </div>
             <div>
-              <h1 className="font-serif text-xl font-semibold tracking-tight">
+              <h1 className="font-serif text-xl font-semibold tracking-tight 2xl:text-2xl">
                 The Tom Collection
               </h1>
-              <p className="text-xs text-muted">
+              <p className="text-xs text-muted 2xl:text-sm">
                 {libraryRootPath ? libraryRootPath : "Library path not set"}
               </p>
             </div>
@@ -61,14 +61,14 @@ export function TopBar({
           <div className="flex items-center gap-3">
             <Link
               href="/settings"
-              className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground"
+              className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground 2xl:py-2 2xl:text-base"
             >
               Settings
             </Link>
             <button
               onClick={onSync}
               disabled={syncing}
-              className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 2xl:py-2 2xl:text-base"
             >
               <RefreshCw
                 className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`}
@@ -80,13 +80,13 @@ export function TopBar({
 
         {/* ── Filters row ──────────────────── */}
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <label className="relative flex w-full max-w-lg items-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm text-foreground transition-colors focus-within:border-accent/50">
-            <Search className="h-4 w-4 text-muted" />
+          <label className="relative flex w-full max-w-lg items-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm text-foreground transition-colors focus-within:border-accent/50 2xl:max-w-xl 2xl:py-2 2xl:text-base">
+            <Search className="h-4 w-4 text-muted 2xl:h-5 2xl:w-5" />
             <input
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
               placeholder="Search your collection..."
-              className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-faint"
+              className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-faint 2xl:text-base"
             />
           </label>
 
@@ -94,7 +94,7 @@ export function TopBar({
             <select
               value={genre}
               onChange={(event) => onGenreChange(event.target.value)}
-              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-foreground transition-colors hover:border-border-hover"
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-foreground transition-colors hover:border-border-hover 2xl:py-2 2xl:text-base"
             >
               <option value="All">All genres</option>
               {genres.map((item) => (
@@ -111,7 +111,7 @@ export function TopBar({
                   event.target.value === "" ? null : Number(event.target.value)
                 )
               }
-              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-foreground transition-colors hover:border-border-hover"
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-foreground transition-colors hover:border-border-hover 2xl:py-2 2xl:text-base"
             >
               <option value="">Any rating</option>
               {[10, 9, 8, 7, 6, 5].map((rating) => (
@@ -126,7 +126,7 @@ export function TopBar({
               onChange={(event) =>
                 onWatchedChange(event.target.value as WatchedFilter)
               }
-              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-foreground transition-colors hover:border-border-hover"
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-foreground transition-colors hover:border-border-hover 2xl:py-2 2xl:text-base"
             >
               <option value="all">All</option>
               <option value="watched">Watched</option>
@@ -140,7 +140,7 @@ export function TopBar({
                   event.target.value as "title" | "rating" | "recent"
                 )
               }
-              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-foreground transition-colors hover:border-border-hover"
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-foreground transition-colors hover:border-border-hover 2xl:py-2 2xl:text-base"
             >
               <option value="title">Sort: Title</option>
               <option value="rating">Sort: Rating</option>
@@ -150,7 +150,7 @@ export function TopBar({
         </div>
 
         {lastSyncedAt ? (
-          <p className="text-xs text-faint">
+          <p className="text-xs text-faint 2xl:text-sm">
             Last synced {new Date(lastSyncedAt).toLocaleString()}
           </p>
         ) : null}

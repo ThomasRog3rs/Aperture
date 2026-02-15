@@ -58,6 +58,18 @@
   box-sizing: border-box;
 }
 
+button {
+  cursor: pointer !important;
+}
+
+button:disabled {
+  cursor: not-allowed !important;
+}
+
+a {
+  cursor: pointer !important;
+}
+
 body {
   background:
     radial-gradient(
@@ -95,6 +107,12 @@ img {
 ::selection {
   background: rgba(212, 168, 83, 0.35);
   color: #fff8ed;
+}
+
+/* Focus ring for keyboard/remote navigation (TV-friendly) */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--accent);
 }
 
 /* Scrollbar */

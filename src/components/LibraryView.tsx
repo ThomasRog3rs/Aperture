@@ -208,22 +208,22 @@ export function LibraryView() {
         libraryRootPath={libraryRootPath}
       />
 
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8">
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8 2xl:max-w-screen-2xl">
         {notice ? (
           <StatusBanner tone={notice.tone} message={notice.message} />
         ) : null}
 
         {/* ── No library path configured ── */}
         {!libraryRootPath ? (
-          <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border bg-surface p-12 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-accent-muted text-accent">
-              <FolderOpen className="h-7 w-7" />
+          <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border bg-surface p-12 text-center 2xl:p-16">
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-accent-muted text-accent 2xl:h-16 2xl:w-16">
+              <FolderOpen className="h-7 w-7 2xl:h-8 2xl:w-8" />
             </div>
             <div>
-              <p className="font-serif text-lg font-medium text-foreground">
+              <p className="font-serif text-lg font-medium text-foreground 2xl:text-xl">
                 Welcome to Aperture
               </p>
-              <p className="mt-1 max-w-md text-sm text-muted">
+              <p className="mt-1 max-w-md text-sm text-muted 2xl:text-base">
                 Head over to Settings and point Aperture at your movie library
                 to get started.
               </p>
@@ -233,23 +233,23 @@ export function LibraryView() {
 
         {/* ── Loading ─────────────────────── */}
         {loading ? (
-          <div className="flex items-center justify-center gap-3 rounded-2xl border border-border bg-surface p-10 text-sm text-muted">
-            <Loader2 className="h-5 w-5 animate-spin text-accent" />
+          <div className="flex items-center justify-center gap-3 rounded-2xl border border-border bg-surface p-10 text-sm text-muted 2xl:p-12 2xl:text-base">
+            <Loader2 className="h-5 w-5 animate-spin text-accent 2xl:h-6 2xl:w-6" />
             Loading your collection...
           </div>
         ) : null}
 
         {/* ── Empty collection ────────────── */}
         {!loading && libraryRootPath && movies.length === 0 ? (
-          <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-surface p-12 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-accent-muted text-accent">
-              <Clapperboard className="h-7 w-7" />
+          <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-surface p-12 text-center 2xl:p-16">
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-accent-muted text-accent 2xl:h-16 2xl:w-16">
+              <Clapperboard className="h-7 w-7 2xl:h-8 2xl:w-8" />
             </div>
             <div>
-              <p className="font-serif text-lg font-medium text-foreground">
+              <p className="font-serif text-lg font-medium text-foreground 2xl:text-xl">
                 No movies yet
               </p>
-              <p className="mt-1 max-w-md text-sm text-muted">
+              <p className="mt-1 max-w-md text-sm text-muted 2xl:text-base">
                 Click <strong className="text-foreground">Sync Library</strong>{" "}
                 above to scan your collection and pull in metadata.
               </p>
