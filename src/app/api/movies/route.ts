@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     minRatingParam && !Number.isNaN(Number(minRatingParam))
       ? Number(minRatingParam)
       : undefined;
-  const sortParam = searchParams.get("sort")?.trim() ?? "title";
+  const sortParam = searchParams.get("sort")?.trim() ?? "rating";
   const sort =
     sortParam === "rating" || sortParam === "recent" ? sortParam : "title";
 

@@ -24,7 +24,7 @@ export function LibraryView() {
   const [query, setQuery] = useState("");
   const [genre, setGenre] = useState("All");
   const [minRating, setMinRating] = useState<number | null>(null);
-  const [sort, setSort] = useState<"title" | "rating" | "recent">("title");
+  const [sort, setSort] = useState<"title" | "rating" | "recent">("rating");
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [notice, setNotice] = useState<{
