@@ -31,6 +31,7 @@ function ensureSchema(db: DbInstance) {
       fileSizeBytes INTEGER NOT NULL,
       titleRaw TEXT NOT NULL,
       titleClean TEXT NOT NULL,
+      titleEditedAt INTEGER NULL,
       year INTEGER NULL,
       tmdbId INTEGER NULL,
       posterPath TEXT NULL,
@@ -38,6 +39,7 @@ function ensureSchema(db: DbInstance) {
       runtimeMinutes INTEGER NULL,
       tmdbRating REAL NULL,
       genresJson TEXT NOT NULL DEFAULT '[]',
+      userGenresJson TEXT NOT NULL DEFAULT '[]',
       youtubeTrailerKey TEXT NULL,
       personalRating INTEGER NULL,
       errorMessage TEXT NULL,
@@ -48,6 +50,17 @@ function ensureSchema(db: DbInstance) {
     CREATE INDEX IF NOT EXISTS idx_movies_personal_rating ON movies (personalRating);
     CREATE INDEX IF NOT EXISTS idx_movies_title_clean ON movies (titleClean);
   `);
+
+  const columns = db
+    .prepare("PRAGMA table_info(movies)")
+    .all() as Array<{ name: string }>;
+  const columnNames = new Set(columns.map((column) => column.name));
+  if (!columnNames.has("titleEditedAt")) {
+    db.exec("ALTER TABLE movies ADD COLUMN titleEditedAt INTEGER NULL");
+  }
+  if (!columnNames.has("userGenresJson")) {
+    db.exec("ALTER TABLE movies ADD COLUMN userGenresJson TEXT NOT NULL DEFAULT '[]'");
+  }
 }
 
 export function getDb(): DbInstance {

@@ -4,6 +4,12 @@ const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
   images: {
+    localPatterns: [
+      // Allow Next/Image to render images served by our own API routes,
+      // including query-string based endpoints like `folder-image?name=...`.
+      // Omitting `search` allows any query string (or none).
+      { pathname: "/api/movies/**" },
+    ],
     remotePatterns: [
       {
         protocol: "https",

@@ -52,7 +52,15 @@ export async function POST() {
 
     const existing = getMovieById(id);
     const existingGenres = existing ? parseGenres(existing.genresJson) : [];
-    const { titleClean, year } = cleanTitle(entry.titleRaw);
+    const existingUserGenres = existing ? parseGenres(existing.userGenresJson) : [];
+    const { titleClean: derivedTitleClean, year } = cleanTitle(entry.titleRaw);
+    const titleEditedAt = existing?.titleEditedAt ?? null;
+    const titleClean = titleEditedAt
+      ? existing?.titleClean ?? derivedTitleClean
+      : derivedTitleClean;
+    const titleRaw = titleEditedAt
+      ? existing?.titleRaw ?? entry.titleRaw
+      : entry.titleRaw;
     let errorMessage = entry.errorMessage;
     let tmdbData = null;
 
@@ -85,20 +93,29 @@ export async function POST() {
       errors += 1;
     }
 
+    const existingPoster = existing?.posterPath ?? null;
+    const keepPoster =
+      typeof existingPoster === "string" &&
+      (existingPoster.startsWith("http://") ||
+        existingPoster.startsWith("https://") ||
+        existingPoster.startsWith("/api/"));
+
     upsertMovie({
       id,
       folderPath: entry.folderPath,
       filePath: entry.filePath,
       fileSizeBytes: entry.fileSizeBytes,
-      titleRaw: entry.titleRaw,
+      titleRaw,
       titleClean,
+      titleEditedAt,
       year,
       tmdbId: tmdbData?.providerId ?? null,
-      posterPath: tmdbData?.posterPath ?? null,
+      posterPath: keepPoster ? existingPoster : tmdbData?.posterPath ?? null,
       backdropPath: tmdbData?.backdropPath ?? null,
       runtimeMinutes: tmdbData?.runtimeMinutes ?? null,
       tmdbRating: tmdbData?.tmdbRating ?? null,
       genres: tmdbData?.genres ?? [],
+      userGenres: existingUserGenres,
       youtubeTrailerKey: tmdbData?.youtubeTrailerKey ?? null,
       personalRating: existing?.personalRating ?? null,
       errorMessage,

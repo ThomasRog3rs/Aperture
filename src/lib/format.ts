@@ -19,6 +19,9 @@ export function tmdbImageUrl(
   if (path.startsWith("http://") || path.startsWith("https://")) {
     return path;
   }
+  if (path.startsWith("/api/")) {
+    return path;
+  }
   return `https://image.tmdb.org/t/p/${size}${path}`;
 }
 

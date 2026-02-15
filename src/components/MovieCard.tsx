@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { Play, Star, AlertTriangle, Video } from "lucide-react";
 import { formatRating, formatRuntime, tmdbImageUrl } from "@/lib/format";
@@ -36,7 +37,11 @@ export function MovieCard({ movie, onPlay, onRate }: MovieCardProps) {
       className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.4)] transition-shadow duration-300 hover:shadow-[0_16px_48px_rgba(212,168,83,0.08)]"
     >
       {/* ── Poster ─────────────────────── */}
-      <div className="relative aspect-[2/3] w-full overflow-hidden bg-background">
+      <Link
+        href={`/movies/${movie.id}`}
+        aria-label={`Open details for ${movie.titleClean}`}
+        className="relative block aspect-[2/3] w-full overflow-hidden bg-background"
+      >
         {posterUrl ? (
           <Image
             src={posterUrl}
@@ -56,19 +61,23 @@ export function MovieCard({ movie, onPlay, onRate }: MovieCardProps) {
         )}
         {/* Warm cinematic gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-[#0d0c0a] via-[#0d0c0a]/20 to-transparent opacity-85" />
-      </div>
+      </Link>
 
       {/* ── Details ────────────────────── */}
       <div className="flex flex-1 flex-col gap-3 p-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
+          <Link
+            href={`/movies/${movie.id}`}
+            className="min-w-0"
+            aria-label={`Open details for ${movie.titleClean}`}
+          >
             <h3 className="truncate font-serif text-base font-semibold text-foreground">
               {movie.titleClean}
             </h3>
             <p className="text-xs text-muted">
               {movie.year ?? "\u2014"} \u00b7 {formatRuntime(movie.runtimeMinutes)}
             </p>
-          </div>
+          </Link>
           <div className="flex shrink-0 items-center gap-1 rounded-md bg-accent-muted px-2 py-1 text-xs font-medium text-accent">
             <Star className="h-3.5 w-3.5" />
             {formatRating(movie.tmdbRating)}

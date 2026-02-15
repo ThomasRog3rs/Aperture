@@ -1,4 +1,4 @@
-import { getDb } from "@/lib/db";
+import { getDb } from "./db";
 
 export type MovieUpsert = {
   id: string;
@@ -7,6 +7,7 @@ export type MovieUpsert = {
   fileSizeBytes: number;
   titleRaw: string;
   titleClean: string;
+  titleEditedAt: number | null;
   year: number | null;
   tmdbId: number | null;
   posterPath: string | null;
@@ -14,14 +15,16 @@ export type MovieUpsert = {
   runtimeMinutes: number | null;
   tmdbRating: number | null;
   genres: string[];
+  userGenres: string[];
   youtubeTrailerKey: string | null;
   personalRating: number | null;
   errorMessage: string | null;
   lastSyncedAt: number;
 };
 
-export type MovieRow = Omit<MovieUpsert, "genres"> & {
+export type MovieRow = Omit<MovieUpsert, "genres" | "userGenres"> & {
   genresJson: string;
+  userGenresJson: string;
 };
 
 export type MovieQuery = {
@@ -57,6 +60,7 @@ export function upsertMovie(movie: MovieUpsert) {
       fileSizeBytes,
       titleRaw,
       titleClean,
+      titleEditedAt,
       year,
       tmdbId,
       posterPath,
@@ -64,6 +68,7 @@ export function upsertMovie(movie: MovieUpsert) {
       runtimeMinutes,
       tmdbRating,
       genresJson,
+      userGenresJson,
       youtubeTrailerKey,
       personalRating,
       errorMessage,
@@ -75,6 +80,7 @@ export function upsertMovie(movie: MovieUpsert) {
       @fileSizeBytes,
       @titleRaw,
       @titleClean,
+      @titleEditedAt,
       @year,
       @tmdbId,
       @posterPath,
@@ -82,6 +88,7 @@ export function upsertMovie(movie: MovieUpsert) {
       @runtimeMinutes,
       @tmdbRating,
       @genresJson,
+      @userGenresJson,
       @youtubeTrailerKey,
       @personalRating,
       @errorMessage,
@@ -93,6 +100,7 @@ export function upsertMovie(movie: MovieUpsert) {
       fileSizeBytes = excluded.fileSizeBytes,
       titleRaw = excluded.titleRaw,
       titleClean = excluded.titleClean,
+      titleEditedAt = excluded.titleEditedAt,
       year = excluded.year,
       tmdbId = excluded.tmdbId,
       posterPath = excluded.posterPath,
@@ -100,6 +108,7 @@ export function upsertMovie(movie: MovieUpsert) {
       runtimeMinutes = excluded.runtimeMinutes,
       tmdbRating = excluded.tmdbRating,
       genresJson = excluded.genresJson,
+      userGenresJson = excluded.userGenresJson,
       youtubeTrailerKey = excluded.youtubeTrailerKey,
       personalRating = excluded.personalRating,
       errorMessage = excluded.errorMessage,
@@ -108,6 +117,7 @@ export function upsertMovie(movie: MovieUpsert) {
   ).run({
     ...movie,
     genresJson: JSON.stringify(movie.genres),
+    userGenresJson: JSON.stringify(movie.userGenres),
   });
 }
 
@@ -124,7 +134,7 @@ export function listMovies(query: MovieQuery): MovieRow[] {
   }
 
   if (query.genre) {
-    where.push("genresJson LIKE @genre");
+    where.push("(genresJson LIKE @genre OR userGenresJson LIKE @genre)");
     params.genre = `%\"${query.genre}\"%`;
   }
 
@@ -150,6 +160,40 @@ export function listMovies(query: MovieQuery): MovieRow[] {
   `;
 
   return db.prepare(sql).all(params) as MovieRow[];
+}
+
+export type MovieUpdate = {
+  titleRaw?: string;
+  titleClean?: string;
+  titleEditedAt?: number | null;
+  posterPath?: string | null;
+  tmdbId?: number | null;
+  backdropPath?: string | null;
+  runtimeMinutes?: number | null;
+  tmdbRating?: number | null;
+  genresJson?: string;
+  userGenresJson?: string;
+  youtubeTrailerKey?: string | null;
+  errorMessage?: string | null;
+  lastSyncedAt?: number;
+  personalRating?: number | null;
+};
+
+export function updateMovie(id: string, updates: MovieUpdate) {
+  const db = getDb();
+  const entries = Object.entries(updates).filter(([, value]) => value !== undefined);
+  if (entries.length === 0) return;
+
+  const setClauses = entries.map(([key]) => `${key} = @${key}`).join(", ");
+  const params = entries.reduce(
+    (acc, [key, value]) => {
+      acc[key] = value;
+      return acc;
+    },
+    { id } as Record<string, string | number | null>
+  );
+
+  db.prepare(`UPDATE movies SET ${setClauses} WHERE id = @id`).run(params);
 }
 
 export function updatePersonalRating(id: string, personalRating: number | null) {
