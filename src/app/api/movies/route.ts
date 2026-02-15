@@ -41,14 +41,26 @@ export async function GET(request: Request) {
   const sortParam = searchParams.get("sort")?.trim() ?? "rating";
   const sort =
     sortParam === "rating" || sortParam === "recent" ? sortParam : "title";
+  const watchedParam = searchParams.get("watched")?.trim()?.toLowerCase();
+  const watched =
+    watchedParam === "watched" || watchedParam === "unwatched"
+      ? watchedParam
+      : "all";
 
-  const rows = listMovies({ q, genre, minPersonalRating, sort });
+  const rows = listMovies({ q, genre, minPersonalRating, watched, sort });
   const movies = rows.map((row) => {
-    const { genresJson, userGenresJson, xxxRated, ...rest } = row;
+    const { genresJson, userGenresJson, xxxRated, watched: watchedCol, ...rest } = row;
     const omdbGenres = parseGenres(genresJson);
     const userGenres = parseGenres(userGenresJson);
     const genres = mergeGenres(omdbGenres, userGenres);
-    return { ...rest, genres, omdbGenres, userGenres, xxxRated: Boolean(xxxRated) };
+    return {
+      ...rest,
+      genres,
+      omdbGenres,
+      userGenres,
+      xxxRated: Boolean(xxxRated),
+      watched: Boolean(watchedCol),
+    };
   });
 
   return NextResponse.json({ movies });

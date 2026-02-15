@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { Search, Aperture, RefreshCw } from "lucide-react";
 
+type WatchedFilter = "all" | "watched" | "unwatched";
+
 type TopBarProps = {
   query: string;
   onQueryChange: (value: string) => void;
@@ -11,6 +13,8 @@ type TopBarProps = {
   onGenreChange: (value: string) => void;
   minRating: number | null;
   onMinRatingChange: (value: number | null) => void;
+  watched: WatchedFilter;
+  onWatchedChange: (value: WatchedFilter) => void;
   sort: "title" | "rating" | "recent";
   onSortChange: (value: "title" | "rating" | "recent") => void;
   onSync: () => void;
@@ -27,6 +31,8 @@ export function TopBar({
   onGenreChange,
   minRating,
   onMinRatingChange,
+  watched,
+  onWatchedChange,
   sort,
   onSortChange,
   onSync,
@@ -113,6 +119,18 @@ export function TopBar({
                   {rating}+
                 </option>
               ))}
+            </select>
+
+            <select
+              value={watched}
+              onChange={(event) =>
+                onWatchedChange(event.target.value as WatchedFilter)
+              }
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-foreground transition-colors hover:border-border-hover"
+            >
+              <option value="all">All</option>
+              <option value="watched">Watched</option>
+              <option value="unwatched">Unwatched</option>
             </select>
 
             <select

@@ -8,6 +8,7 @@ type MovieGridProps = {
   movies: Movie[];
   onPlay: (movie: Movie) => void;
   onRate: (id: string, rating: number | null) => void;
+  onWatched?: (id: string, watched: boolean) => void;
   /** When true, blur cards marked as XXX rated (main browse only; unblurred when searching/filtering). */
   blurXxxRated?: boolean;
 };
@@ -30,7 +31,7 @@ const item = {
   },
 };
 
-export function MovieGrid({ movies, onPlay, onRate, blurXxxRated = false }: MovieGridProps) {
+export function MovieGrid({ movies, onPlay, onRate, onWatched, blurXxxRated = false }: MovieGridProps) {
   return (
     <motion.div
       variants={container}
@@ -44,6 +45,7 @@ export function MovieGrid({ movies, onPlay, onRate, blurXxxRated = false }: Movi
             movie={movie}
             onPlay={onPlay}
             onRate={onRate}
+            onWatched={onWatched}
             blurIfXxxRated={blurXxxRated}
           />
         </motion.div>

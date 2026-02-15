@@ -28,6 +28,7 @@ export function LibraryView() {
   const [query, setQuery] = useState("");
   const [genre, setGenre] = useState("All");
   const [minRating, setMinRating] = useState<number | null>(null);
+  const [watched, setWatched] = useState<"all" | "watched" | "unwatched">("all");
   const [sort, setSort] = useState<"title" | "rating" | "recent">("rating");
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -60,13 +61,14 @@ export function LibraryView() {
     if (minRating !== null) {
       params.set("minPersonalRating", String(minRating));
     }
+    if (watched !== "all") params.set("watched", watched);
     params.set("sort", sort);
 
     const response = await fetch(`/api/movies?${params.toString()}`);
     const data = (await response.json()) as { movies: Movie[] };
     setMovies(data.movies ?? []);
     setLoading(false);
-  }, [debouncedQuery, genre, minRating, sort]);
+  }, [debouncedQuery, genre, minRating, watched, sort]);
 
   useEffect(() => {
     fetchSettings().catch(() => {
@@ -164,6 +166,28 @@ export function LibraryView() {
     );
   }, []);
 
+  const handleWatched = useCallback(async (id: string, watchedValue: boolean) => {
+    try {
+      const response = await fetch(`/api/movies/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ watched: watchedValue }),
+      });
+      const data = (await response.json()) as { movie?: Movie; error?: string };
+      if (!response.ok || !data.movie) {
+        throw new Error(data.error || "Failed to update watched status.");
+      }
+      setMovies((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, watched: watchedValue } : m))
+      );
+    } catch {
+      setNotice({
+        tone: "error",
+        message: "Failed to update watched status.",
+      });
+    }
+  }, []);
+
   return (
     <div className="min-h-screen">
       <TopBar
@@ -174,6 +198,8 @@ export function LibraryView() {
         onGenreChange={setGenre}
         minRating={minRating}
         onMinRatingChange={setMinRating}
+        watched={watched}
+        onWatchedChange={setWatched}
         sort={sort}
         onSortChange={setSort}
         onSync={handleSync}
@@ -237,6 +263,7 @@ export function LibraryView() {
             movies={movies}
             onPlay={handlePlay}
             onRate={handleRate}
+            onWatched={handleWatched}
             blurXxxRated={true}
           />
         ) : null}

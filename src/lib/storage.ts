@@ -26,12 +26,14 @@ export type MovieRow = Omit<MovieUpsert, "genres" | "userGenres"> & {
   genresJson: string;
   userGenresJson: string;
   xxxRated: number;
+  watched: number;
 };
 
 export type MovieQuery = {
   q?: string;
   genre?: string;
   minPersonalRating?: number;
+  watched?: "all" | "watched" | "unwatched";
   sort?: "title" | "rating" | "recent";
 };
 
@@ -144,6 +146,12 @@ export function listMovies(query: MovieQuery): MovieRow[] {
     params.minPersonalRating = query.minPersonalRating;
   }
 
+  if (query.watched === "watched") {
+    where.push("watched = 1");
+  } else if (query.watched === "unwatched") {
+    where.push("watched = 0");
+  }
+
   const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
 
   let orderBy = "titleClean ASC";
@@ -213,6 +221,7 @@ export type MovieUpdate = {
   lastSyncedAt?: number;
   personalRating?: number | null;
   xxxRated?: number | null;
+  watched?: number | null;
 };
 
 export function updateMovie(id: string, updates: MovieUpdate) {

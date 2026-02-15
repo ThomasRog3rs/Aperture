@@ -75,6 +75,7 @@ export default function MovieDetailPage() {
   const [playing, setPlaying] = useState(false);
   const [savingGenres, setSavingGenres] = useState(false);
   const [savingXxxRated, setSavingXxxRated] = useState(false);
+  const [savingWatched, setSavingWatched] = useState(false);
   const [notice, setNotice] = useState<{
     tone: "info" | "success" | "error";
     message: string;
@@ -245,6 +246,41 @@ export default function MovieDetailPage() {
         });
       } finally {
         setSavingXxxRated(false);
+      }
+    },
+    [movie]
+  );
+
+  const handleWatchedChange = useCallback(
+    async (checked: boolean) => {
+      if (!movie) return;
+      setSavingWatched(true);
+      setNotice(null);
+      try {
+        const response = await fetch(`/api/movies/${movie.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ watched: checked }),
+        });
+        const data = (await response.json()) as MovieResponse;
+        if (!response.ok || !data.movie) {
+          throw new Error(data.error || "Failed to update.");
+        }
+        setMovie(data.movie);
+        setNotice({
+          tone: "success",
+          message: checked
+            ? "Marked as watched."
+            : "Marked as unwatched.",
+        });
+      } catch (error) {
+        setNotice({
+          tone: "error",
+          message:
+            error instanceof Error ? error.message : "Failed to update.",
+        });
+      } finally {
+        setSavingWatched(false);
       }
     },
     [movie]
@@ -448,6 +484,16 @@ export default function MovieDetailPage() {
                       (blurred on main screen until search/filter)
                     </span>
                   </span>
+                </label>
+                <label className="mt-3 flex cursor-pointer items-center gap-3 text-sm text-muted">
+                  <input
+                    type="checkbox"
+                    checked={movie.watched ?? false}
+                    onChange={(e) => handleWatchedChange(e.target.checked)}
+                    disabled={savingWatched}
+                    className="h-4 w-4 rounded border-border bg-background text-accent focus:ring-accent/40"
+                  />
+                  <span>Watched</span>
                 </label>
                 <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-muted">
                   <div className="rounded-xl border border-border bg-background/40 p-3">

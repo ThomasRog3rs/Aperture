@@ -30,11 +30,18 @@ function mergeGenres(omdbGenres: string[], userGenres: string[]) {
 
 function mapRowToMovie(row: ReturnType<typeof getMovieById>): Movie | null {
   if (!row) return null;
-  const { genresJson, userGenresJson, xxxRated, ...rest } = row;
+  const { genresJson, userGenresJson, xxxRated, watched, ...rest } = row;
   const omdbGenres = parseGenres(genresJson);
   const userGenres = parseGenres(userGenresJson);
   const genres = mergeGenres(omdbGenres, userGenres);
-  return { ...rest, genres, omdbGenres, userGenres, xxxRated: Boolean(xxxRated) };
+  return {
+    ...rest,
+    genres,
+    omdbGenres,
+    userGenres,
+    xxxRated: Boolean(xxxRated),
+    watched: Boolean(watched),
+  };
 }
 
 export async function GET(
@@ -70,6 +77,7 @@ export async function PATCH(
         posterPath?: string | null;
         userGenres?: string[];
         xxxRated?: boolean;
+        watched?: boolean;
       }
     | null;
 
@@ -84,6 +92,7 @@ export async function PATCH(
     titleEditedAt?: number;
     userGenresJson?: string;
     xxxRated?: number;
+    watched?: number;
   } = {};
 
   if (body.titleClean !== undefined) {
@@ -147,6 +156,10 @@ export async function PATCH(
 
   if (body.xxxRated !== undefined) {
     updates.xxxRated = body.xxxRated ? 1 : 0;
+  }
+
+  if (body.watched !== undefined) {
+    updates.watched = body.watched ? 1 : 0;
   }
 
   if (updates.titleClean || updates.titleRaw) {

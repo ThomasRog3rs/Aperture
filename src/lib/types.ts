@@ -29,5 +29,7 @@ export type Movie = {
   lastSyncedAt: number;
   /** When true, card is blurred on the main library view (unless searching/filtering). */
   xxxRated: boolean;
+  /** When true, user has marked this movie as watched. */
+  watched: boolean;
 };
 

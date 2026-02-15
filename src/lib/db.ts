@@ -44,7 +44,8 @@ function ensureSchema(db: DbInstance) {
       personalRating INTEGER NULL,
       errorMessage TEXT NULL,
       lastSyncedAt INTEGER NOT NULL,
-      xxxRated INTEGER NOT NULL DEFAULT 0
+      xxxRated INTEGER NOT NULL DEFAULT 0,
+      watched INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE INDEX IF NOT EXISTS idx_movies_tmdb_id ON movies (tmdbId);
@@ -64,6 +65,9 @@ function ensureSchema(db: DbInstance) {
   }
   if (!columnNames.has("xxxRated")) {
     db.exec("ALTER TABLE movies ADD COLUMN xxxRated INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!columnNames.has("watched")) {
+    db.exec("ALTER TABLE movies ADD COLUMN watched INTEGER NOT NULL DEFAULT 0");
   }
 }
 

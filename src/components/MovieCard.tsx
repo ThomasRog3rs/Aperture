@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Play, Star, AlertTriangle, Video } from "lucide-react";
+import { Check, Play, Star, AlertTriangle, Video } from "lucide-react";
 import { formatRating, formatRuntime, tmdbImageUrl } from "@/lib/format";
 import type { Movie } from "@/lib/types";
 
@@ -11,11 +11,12 @@ type MovieCardProps = {
   movie: Movie;
   onPlay: (movie: Movie) => void;
   onRate: (id: string, rating: number | null) => void;
+  onWatched?: (id: string, watched: boolean) => void;
   /** When true, blur the card if movie is XXX rated (e.g. on main browse, not when searching/filtering). */
   blurIfXxxRated?: boolean;
 };
 
-export function MovieCard({ movie, onPlay, onRate, blurIfXxxRated = false }: MovieCardProps) {
+export function MovieCard({ movie, onPlay, onRate, onWatched, blurIfXxxRated = false }: MovieCardProps) {
   const posterUrl = tmdbImageUrl(movie.posterPath, "w342");
   const shouldBlur = blurIfXxxRated && movie.xxxRated;
   const fileMissing = movie.errorMessage
@@ -82,9 +83,30 @@ export function MovieCard({ movie, onPlay, onRate, blurIfXxxRated = false }: Mov
               {movie.year ?? "\u2014"} \u00b7 {formatRuntime(movie.runtimeMinutes)}
             </p>
           </Link>
-          <div className="flex shrink-0 items-center gap-1 rounded-md bg-accent-muted px-2 py-1 text-xs font-medium text-accent">
-            <Star className="h-3.5 w-3.5" />
-            {formatRating(movie.tmdbRating)}
+          <div className="flex shrink-0 items-center gap-1.5">
+            {onWatched ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onWatched(movie.id, !movie.watched);
+                }}
+                className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                  movie.watched
+                    ? "bg-emerald-500/20 text-emerald-400"
+                    : "border border-border bg-surface text-muted hover:border-border-hover hover:text-foreground"
+                }`}
+                title={movie.watched ? "Mark as unwatched" : "Mark as watched"}
+                aria-label={movie.watched ? "Mark as unwatched" : "Mark as watched"}
+              >
+                <Check className={`h-3.5 w-3.5 ${movie.watched ? "" : "opacity-40"}`} />
+                {movie.watched ? "Watched" : "Mark watched"}
+              </button>
+            ) : null}
+            <div className="flex items-center gap-1 rounded-md bg-accent-muted px-2 py-1 text-xs font-medium text-accent">
+              <Star className="h-3.5 w-3.5" />
+              {formatRating(movie.tmdbRating)}
+            </div>
           </div>
         </div>
 
