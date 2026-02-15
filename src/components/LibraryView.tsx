@@ -19,6 +19,10 @@ type SettingsResponse = {
   libraryRootPath: string | null;
 };
 
+type FilterOptionsResponse = {
+  genres: string[];
+};
+
 export function LibraryView() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [query, setQuery] = useState("");
@@ -32,6 +36,7 @@ export function LibraryView() {
     message: string;
   } | null>(null);
   const [libraryRootPath, setLibraryRootPath] = useState<string | null>(null);
+  const [availableGenres, setAvailableGenres] = useState<string[]>([]);
 
   const debouncedQuery = useDebouncedValue(query, 350);
 
@@ -39,6 +44,12 @@ export function LibraryView() {
     const response = await fetch("/api/settings");
     const data = (await response.json()) as SettingsResponse;
     setLibraryRootPath(data.libraryRootPath ?? null);
+  }, []);
+
+  const fetchFilterOptions = useCallback(async () => {
+    const response = await fetch("/api/filter-options");
+    const data = (await response.json()) as FilterOptionsResponse;
+    setAvailableGenres(data.genres ?? []);
   }, []);
 
   const fetchMovies = useCallback(async () => {
@@ -64,19 +75,17 @@ export function LibraryView() {
   }, [fetchSettings]);
 
   useEffect(() => {
+    fetchFilterOptions().catch(() => {
+      setNotice({ tone: "error", message: "Failed to load filter options." });
+    });
+  }, [fetchFilterOptions]);
+
+  useEffect(() => {
     fetchMovies().catch(() => {
       setNotice({ tone: "error", message: "Failed to load movies." });
       setLoading(false);
     });
   }, [fetchMovies]);
-
-  const availableGenres = useMemo(() => {
-    const unique = new Set<string>();
-    movies.forEach((movie) => {
-      movie.genres.forEach((genreName) => unique.add(genreName));
-    });
-    return Array.from(unique).sort();
-  }, [movies]);
 
   const lastSyncedAt = useMemo(() => {
     if (movies.length === 0) return null;
@@ -99,6 +108,13 @@ export function LibraryView() {
         message: `Synced ${data.updated} movies (${data.notFound} not found, ${data.errors} errors).`,
       });
       await fetchMovies();
+      fetchFilterOptions().catch(() => {
+        setNotice((current) =>
+          current?.tone === "success"
+            ? current
+            : { tone: "error", message: "Failed to refresh filters." }
+        );
+      });
     } catch (error) {
       setNotice({
         tone: "error",
@@ -216,7 +232,12 @@ export function LibraryView() {
         ) : null}
 
         {movies.length > 0 ? (
-          <MovieGrid movies={movies} onPlay={handlePlay} onRate={handleRate} />
+          <MovieGrid
+            key={movies.map((m) => m.id).join(",")}
+            movies={movies}
+            onPlay={handlePlay}
+            onRate={handleRate}
+          />
         ) : null}
       </main>
     </div>

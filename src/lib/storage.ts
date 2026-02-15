@@ -162,6 +162,40 @@ export function listMovies(query: MovieQuery): MovieRow[] {
   return db.prepare(sql).all(params) as MovieRow[];
 }
 
+export function listGenres(): string[] {
+  const db = getDb();
+  const rows = db
+    .prepare("SELECT genresJson, userGenresJson FROM movies")
+    .all() as { genresJson: string | null; userGenresJson: string | null }[];
+  const unique = new Map<string, string>();
+
+  const parseGenres = (genresJson: string | null) => {
+    if (!genresJson) return [];
+    try {
+      const parsed = JSON.parse(genresJson) as string[];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  rows.forEach((row) => {
+    const merged = [
+      ...parseGenres(row.genresJson),
+      ...parseGenres(row.userGenresJson),
+    ];
+    merged.forEach((genreName) => {
+      const trimmed = genreName.trim();
+      if (!trimmed) return;
+      const key = trimmed.toLowerCase();
+      if (unique.has(key)) return;
+      unique.set(key, trimmed);
+    });
+  });
+
+  return Array.from(unique.values()).sort((a, b) => a.localeCompare(b));
+}
+
 export type MovieUpdate = {
   titleRaw?: string;
   titleClean?: string;
