@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "framer-motion";
 import type { Movie } from "@/lib/types";
 import { MovieCard } from "@/components/MovieCard";
 
@@ -9,18 +10,37 @@ type MovieGridProps = {
   onRate: (id: string, rating: number | null) => void;
 };
 
+const container = {
+  hidden: {},
+  show: {
+    transition: {
+      staggerChildren: 0.04,
+    },
+  },
+};
+
+const item = {
+  hidden: { opacity: 0, y: 16 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1] },
+  },
+};
+
 export function MovieGrid({ movies, onPlay, onRate }: MovieGridProps) {
   return (
-    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <motion.div
+      variants={container}
+      initial="hidden"
+      animate="show"
+      className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+    >
       {movies.map((movie) => (
-        <MovieCard
-          key={movie.id}
-          movie={movie}
-          onPlay={onPlay}
-          onRate={onRate}
-        />
+        <motion.div key={movie.id} variants={item}>
+          <MovieCard movie={movie} onPlay={onPlay} onRate={onRate} />
+        </motion.div>
       ))}
-    </div>
+    </motion.div>
   );
 }
-

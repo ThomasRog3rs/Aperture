@@ -1,25 +1,37 @@
 "use client";
 
+import { CheckCircle, AlertTriangle, Info } from "lucide-react";
+
 type StatusBannerProps = {
   tone?: "info" | "success" | "error";
   message: string;
 };
 
+const config = {
+  success: {
+    classes: "border-success/30 bg-success-muted text-success",
+    Icon: CheckCircle,
+  },
+  error: {
+    classes: "border-error/30 bg-error-muted text-error",
+    Icon: AlertTriangle,
+  },
+  info: {
+    classes: "border-info/30 bg-info-muted text-info",
+    Icon: Info,
+  },
+} as const;
+
 export function StatusBanner({ tone = "info", message }: StatusBannerProps) {
-  const toneClasses =
-    tone === "success"
-      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
-      : tone === "error"
-      ? "border-rose-500/40 bg-rose-500/10 text-rose-200"
-      : "border-blue-500/40 bg-blue-500/10 text-blue-100";
+  const { classes, Icon } = config[tone];
 
   return (
     <div
-      className={`rounded-xl border px-4 py-3 text-sm ${toneClasses}`}
+      className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-sm ${classes}`}
       role="status"
     >
+      <Icon className="h-4 w-4 shrink-0" />
       {message}
     </div>
   );
 }
-

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Clapperboard, FolderOpen, Loader2 } from "lucide-react";
 import { MovieGrid } from "@/components/MovieGrid";
 import { StatusBanner } from "@/components/StatusBanner";
 import { TopBar } from "@/components/TopBar";
@@ -166,23 +167,51 @@ export function LibraryView() {
       />
 
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8">
-        {notice ? <StatusBanner tone={notice.tone} message={notice.message} /> : null}
+        {notice ? (
+          <StatusBanner tone={notice.tone} message={notice.message} />
+        ) : null}
 
+        {/* ── No library path configured ── */}
         {!libraryRootPath ? (
-          <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-10 text-center text-neutral-300">
-            Set your library path in Settings to begin scanning your movies.
+          <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border bg-surface p-12 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-accent-muted text-accent">
+              <FolderOpen className="h-7 w-7" />
+            </div>
+            <div>
+              <p className="font-serif text-lg font-medium text-foreground">
+                Welcome to Aperture
+              </p>
+              <p className="mt-1 max-w-md text-sm text-muted">
+                Head over to Settings and point Aperture at your movie library
+                to get started.
+              </p>
+            </div>
           </div>
         ) : null}
 
+        {/* ── Loading ─────────────────────── */}
         {loading ? (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-8 text-sm text-neutral-300">
+          <div className="flex items-center justify-center gap-3 rounded-2xl border border-border bg-surface p-10 text-sm text-muted">
+            <Loader2 className="h-5 w-5 animate-spin text-accent" />
             Loading your collection...
           </div>
         ) : null}
 
+        {/* ── Empty collection ────────────── */}
         {!loading && libraryRootPath && movies.length === 0 ? (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-8 text-sm text-neutral-300">
-            No movies yet. Run a sync to scan your library.
+          <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-surface p-12 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-accent-muted text-accent">
+              <Clapperboard className="h-7 w-7" />
+            </div>
+            <div>
+              <p className="font-serif text-lg font-medium text-foreground">
+                No movies yet
+              </p>
+              <p className="mt-1 max-w-md text-sm text-muted">
+                Click <strong className="text-foreground">Sync Library</strong>{" "}
+                above to scan your collection and pull in metadata.
+              </p>
+            </div>
           </div>
         ) : null}
 
@@ -193,4 +222,3 @@ export function LibraryView() {
     </div>
   );
 }
-

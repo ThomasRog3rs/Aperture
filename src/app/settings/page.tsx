@@ -86,40 +86,42 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100">
+    <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-6 py-10">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 text-sm text-neutral-400 hover:text-white"
+          className="inline-flex items-center gap-2 text-sm text-muted transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to library
         </Link>
 
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-8 shadow-[0_30px_60px_rgba(0,0,0,0.4)]">
+        <div className="rounded-2xl border border-border bg-surface p-8 shadow-[0_16px_48px_rgba(0,0,0,0.35)]">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-500/20 text-indigo-200">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-muted text-accent">
               <Folder className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-semibold">Library Settings</h1>
-              <p className="text-sm text-neutral-400">
+              <h1 className="font-serif text-2xl font-semibold tracking-tight">
+                Library Settings
+              </h1>
+              <p className="text-sm text-muted">
                 Point Aperture at your local movie library.
               </p>
             </div>
           </div>
 
           <div className="mt-8 flex flex-col gap-3">
-            <label className="text-xs uppercase tracking-[0.2em] text-neutral-500">
+            <label className="text-xs font-medium uppercase tracking-[0.2em] text-faint">
               Library path
             </label>
             <input
               value={libraryRootPath}
               onChange={(event) => setLibraryRootPath(event.target.value)}
               placeholder="/Volumes/Expansion/My Movies"
-              className="w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-3 text-sm text-white outline-none focus:border-indigo-400"
+              className="w-full rounded-lg border border-border bg-background px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-accent/60"
             />
-            <p className="text-xs text-neutral-500">
+            <p className="text-xs text-faint">
               Example: /Volumes/Expansion/My Movies
             </p>
           </div>
@@ -128,16 +130,18 @@ export default function SettingsPage() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className="rounded-full bg-indigo-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-indigo-500/50"
+              className="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving ? "Saving..." : "Save path"}
             </button>
             <button
               onClick={handleSync}
               disabled={syncing}
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 px-5 py-2 text-sm text-neutral-200 transition hover:border-white/30 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 rounded-lg border border-border px-5 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+              <RefreshCw
+                className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`}
+              />
               {syncing ? "Syncing..." : "Sync Library"}
             </button>
           </div>
@@ -149,9 +153,11 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/5 to-transparent p-6 text-sm text-neutral-300">
-          <p className="font-medium text-white">Tips for better matches</p>
-          <ul className="mt-3 space-y-2 text-sm text-neutral-400">
+        <div className="rounded-2xl border border-border bg-surface p-6 text-sm text-muted">
+          <p className="font-serif font-medium text-foreground">
+            Tips for better matches
+          </p>
+          <ul className="mt-3 list-inside list-disc space-y-2 text-sm text-muted marker:text-accent/40">
             <li>
               Keep folder names focused on title + year (e.g. The_Godfather_1972)
             </li>
@@ -159,8 +165,8 @@ export default function SettingsPage() {
               The cleaner removes tags like 1080p, x264, BluRay, REPACK, etc.
             </li>
             <li>
-              If a movie isn’t found, it will still appear with a “Not found”
-              badge.
+              If a movie isn&apos;t found, it will still appear with a
+              &quot;Not found&quot; badge.
             </li>
           </ul>
         </div>
@@ -168,4 +174,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-

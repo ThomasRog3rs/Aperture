@@ -31,64 +31,68 @@ export function MovieCard({ movie, onPlay, onRate }: MovieCardProps) {
 
   return (
     <motion.div
-      whileHover={{ scale: 1.02 }}
-      transition={{ type: "spring", stiffness: 260, damping: 20 }}
-      className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-[0_20px_40px_rgba(0,0,0,0.35)]"
+      whileHover={{ scale: 1.03, y: -4 }}
+      transition={{ type: "spring", stiffness: 300, damping: 24 }}
+      className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.4)] transition-shadow duration-300 hover:shadow-[0_16px_48px_rgba(212,168,83,0.08)]"
     >
-      <div className="relative aspect-[2/3] w-full overflow-hidden bg-neutral-900">
+      {/* ── Poster ─────────────────────── */}
+      <div className="relative aspect-[2/3] w-full overflow-hidden bg-background">
         {posterUrl ? (
           <Image
             src={posterUrl}
             alt={movie.titleClean}
             fill
             sizes="(max-width: 768px) 50vw, (max-width: 1200px) 25vw, 18vw"
-            className="object-cover transition duration-500 group-hover:scale-105"
+            className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06]"
             onError={handlePosterError}
           />
         ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-gradient-to-br from-neutral-800 to-neutral-900 text-neutral-400">
+          <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-surface-strong text-faint">
             <Video className="h-8 w-8" />
             <span className="text-xs uppercase tracking-[0.2em]">
               No Poster
             </span>
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent opacity-80" />
+        {/* Warm cinematic gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0d0c0a] via-[#0d0c0a]/20 to-transparent opacity-85" />
       </div>
 
-      <div className="flex flex-col gap-3 p-4">
+      {/* ── Details ────────────────────── */}
+      <div className="flex flex-1 flex-col gap-3 p-4">
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-base font-semibold text-white">
+          <div className="min-w-0">
+            <h3 className="truncate font-serif text-base font-semibold text-foreground">
               {movie.titleClean}
             </h3>
-            <p className="text-xs text-neutral-400">
-              {movie.year ?? "—"} · {formatRuntime(movie.runtimeMinutes)}
+            <p className="text-xs text-muted">
+              {movie.year ?? "\u2014"} \u00b7 {formatRuntime(movie.runtimeMinutes)}
             </p>
           </div>
-          <div className="flex items-center gap-1 rounded-full bg-white/10 px-2 py-1 text-xs text-neutral-200">
-            <Star className="h-3.5 w-3.5 text-amber-300" />
+          <div className="flex shrink-0 items-center gap-1 rounded-md bg-accent-muted px-2 py-1 text-xs font-medium text-accent">
+            <Star className="h-3.5 w-3.5" />
             {formatRating(movie.tmdbRating)}
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-400">
+        {/* ── Genre pills ──────────────── */}
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
           {movie.genres.slice(0, 3).map((genre) => (
             <span
               key={genre}
-              className="rounded-full border border-white/10 px-2 py-1"
+              className="rounded-md border border-border px-2 py-0.5"
             >
               {genre}
             </span>
           ))}
           {notFound ? (
-            <span className="rounded-full border border-amber-500/40 px-2 py-1 text-amber-200">
+            <span className="rounded-md border border-accent-strong/40 px-2 py-0.5 text-accent">
               Not found
             </span>
           ) : null}
           {movie.errorMessage ? (
             <span
-              className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 px-2 py-1 text-rose-200"
+              className="inline-flex items-center gap-1 rounded-md border border-error/30 px-2 py-0.5 text-error"
               title={movie.errorMessage}
             >
               <AlertTriangle className="h-3 w-3" />
@@ -97,11 +101,12 @@ export function MovieCard({ movie, onPlay, onRate }: MovieCardProps) {
           ) : null}
         </div>
 
-        <div className="flex items-center justify-between gap-2">
+        {/* ── Actions ──────────────────── */}
+        <div className="mt-auto flex items-center justify-between gap-2 pt-1">
           <button
             onClick={() => onPlay(movie)}
             disabled={playDisabled}
-            className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-semibold text-black transition-all duration-200 hover:-translate-y-0.5 hover:bg-neutral-200 hover:shadow-[0_12px_24px_rgba(255,255,255,0.2)] disabled:cursor-not-allowed disabled:bg-white/40 disabled:shadow-none"
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-background transition-all duration-200 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Play className="h-3.5 w-3.5" />
             Play
@@ -111,15 +116,16 @@ export function MovieCard({ movie, onPlay, onRate }: MovieCardProps) {
               href={`https://www.youtube.com/watch?v=${movie.youtubeTrailerKey}`}
               target="_blank"
               rel="noreferrer"
-              className="rounded-full border border-white/10 px-3 py-2 text-xs text-neutral-200 transition hover:border-white/30"
+              className="rounded-lg border border-border px-3 py-2 text-xs text-muted transition-colors hover:border-border-hover hover:text-foreground"
             >
               Trailer
             </a>
           ) : null}
         </div>
 
-        <div className="flex items-center justify-between text-xs text-neutral-400">
-          <span>Personal rating</span>
+        {/* ── Personal rating ──────────── */}
+        <div className="flex items-center justify-between text-xs text-muted">
+          <span>Your rating</span>
           <select
             value={movie.personalRating ?? ""}
             onChange={(event) =>
@@ -128,9 +134,9 @@ export function MovieCard({ movie, onPlay, onRate }: MovieCardProps) {
                 event.target.value === "" ? null : Number(event.target.value)
               )
             }
-            className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-neutral-100"
+            className="rounded-md border border-border bg-surface px-3 py-1 text-xs text-foreground transition-colors hover:border-border-hover"
           >
-            <option value="">—</option>
+            <option value="">{"\u2014"}</option>
             {Array.from({ length: 11 }).map((_, index) => (
               <option key={index} value={index}>
                 {index}
@@ -142,4 +148,3 @@ export function MovieCard({ movie, onPlay, onRate }: MovieCardProps) {
     </motion.div>
   );
 }
-
