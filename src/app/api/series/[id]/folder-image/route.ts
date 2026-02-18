@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { getMovieById } from "@/lib/storage";
+import { getSeasonById } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
@@ -37,9 +37,9 @@ export async function GET(
     return NextResponse.json({ error: "id is required." }, { status: 400 });
   }
 
-  const movie = getMovieById(id);
-  if (!movie) {
-    return NextResponse.json({ error: "Movie not found." }, { status: 404 });
+  const season = getSeasonById(id);
+  if (!season) {
+    return NextResponse.json({ error: "Season not found." }, { status: 404 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -60,8 +60,8 @@ export async function GET(
     );
   }
 
-  const filePath = path.join(movie.folderPath, name);
-  if (!isWithinFolder(filePath, movie.folderPath)) {
+  const filePath = path.join(season.seasonFolderPath, name);
+  if (!isWithinFolder(filePath, season.seasonFolderPath)) {
     return NextResponse.json(
       { error: "Invalid file path." },
       { status: 400 }

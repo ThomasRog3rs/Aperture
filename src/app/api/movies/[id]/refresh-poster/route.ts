@@ -31,11 +31,18 @@ function mergeGenres(omdbGenres: string[], userGenres: string[]) {
 
 function mapRowToMovie(row: ReturnType<typeof getMovieById>): Movie | null {
   if (!row) return null;
-  const { genresJson, userGenresJson, ...rest } = row;
+  const { genresJson, userGenresJson, xxxRated, watched, ...rest } = row;
   const omdbGenres = parseGenres(genresJson);
   const userGenres = parseGenres(userGenresJson);
   const genres = mergeGenres(omdbGenres, userGenres);
-  return { ...rest, genres, omdbGenres, userGenres };
+  return {
+    ...rest,
+    genres,
+    omdbGenres,
+    userGenres,
+    xxxRated: Boolean(xxxRated),
+    watched: Boolean(watched),
+  };
 }
 
 export async function POST(
