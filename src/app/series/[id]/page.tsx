@@ -12,10 +12,16 @@ import {
   Play,
   Save,
   Video,
+  Check,
 } from "lucide-react";
 import { StatusBanner } from "@/components/StatusBanner";
 import { formatRating, tmdbImageUrl } from "@/lib/format";
 import type { Episode, SeasonWithEpisodes, Series } from "@/lib/types";
+
+type EpisodeResponse = {
+  episode: Episode;
+  error?: string;
+};
 
 type SeriesResponse = {
   series: Series;
@@ -46,6 +52,7 @@ export default function SeriesDetailPage() {
   const [selectedFolderImage, setSelectedFolderImage] = useState("");
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState<string | null>(null);
+  const [togglingWatched, setTogglingWatched] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState<{
@@ -161,6 +168,44 @@ export default function SeriesDetailPage() {
       setPlaying(null);
     }
   }, []);
+
+  const handleToggleEpisodeWatched = useCallback(
+    async (episode: Episode, checked: boolean) => {
+      setTogglingWatched((prev) => new Set(prev).add(episode.id));
+      try {
+        const response = await fetch(`/api/episodes/${episode.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ watched: checked }),
+        });
+        const data = (await response.json()) as EpisodeResponse;
+        if (!response.ok || !data.episode) {
+          throw new Error(data.error || "Failed to update episode.");
+        }
+        setSeasons((prev) =>
+          prev.map((season) => ({
+            ...season,
+            episodes: season.episodes.map((ep) =>
+              ep.id === episode.id ? { ...ep, watched: data.episode.watched } : ep
+            ),
+          }))
+        );
+      } catch (error) {
+        setNotice({
+          tone: "error",
+          message:
+            error instanceof Error ? error.message : "Failed to update episode.",
+        });
+      } finally {
+        setTogglingWatched((prev) => {
+          const next = new Set(prev);
+          next.delete(episode.id);
+          return next;
+        });
+      }
+    },
+    []
+  );
 
   const handleSave = useCallback(async () => {
     if (!series) return;
@@ -493,6 +538,9 @@ export default function SeriesDetailPage() {
                             <table className="w-full text-sm text-muted 2xl:text-base">
                               <thead className="bg-background/50 text-xs uppercase tracking-[0.2em] text-faint">
                                 <tr>
+                                  <th className="w-12 px-4 py-3 text-center">
+                                    <Check className="mx-auto h-3.5 w-3.5" />
+                                  </th>
                                   <th className="px-4 py-3 text-left">Episode</th>
                                   <th className="px-4 py-3 text-left">Title</th>
                                   <th className="px-4 py-3 text-right">Play</th>
@@ -504,10 +552,24 @@ export default function SeriesDetailPage() {
                                     key={episode.id}
                                     className="border-t border-border"
                                   >
+                                    <td className="w-12 px-4 py-3 text-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={episode.watched}
+                                        onChange={(e) =>
+                                          handleToggleEpisodeWatched(
+                                            episode,
+                                            e.target.checked
+                                          )
+                                        }
+                                        disabled={togglingWatched.has(episode.id)}
+                                        className="h-4 w-4 cursor-pointer rounded border-border bg-background text-accent focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50"
+                                      />
+                                    </td>
                                     <td className="px-4 py-3 text-foreground">
                                       {episode.episodeNumber ?? "\u2014"}
                                     </td>
-                                    <td className="px-4 py-3 text-foreground">
+                                    <td className={`px-4 py-3 ${episode.watched ? "text-muted line-through" : "text-foreground"}`}>
                                       {episode.titleClean || episode.titleRaw}
                                     </td>
                                     <td className="px-4 py-3 text-right">

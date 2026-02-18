@@ -75,6 +75,7 @@ export type Episode = {
   filePath: string;
   fileSizeBytes: number;
   lastSyncedAt: number;
+  watched: boolean;
 };
 
 export type SeasonWithEpisodes = Season & { episodes: Episode[] };

@@ -11,13 +11,12 @@ import type { Movie } from "@/lib/types";
 type MovieCardProps = {
   movie: Movie;
   onPlay: (movie: Movie) => void;
-  onRate: (id: string, rating: number | null) => void;
   onWatched?: (id: string, watched: boolean) => void;
   /** When true, blur the card if movie is XXX rated (e.g. on main browse, not when searching/filtering). */
   blurIfXxxRated?: boolean;
 };
 
-export function MovieCard({ movie, onPlay, onRate, onWatched, blurIfXxxRated = false }: MovieCardProps) {
+export function MovieCard({ movie, onPlay, onWatched, blurIfXxxRated = false }: MovieCardProps) {
   const isLargeScreen = useMediaQuery("(min-width: 1536px)");
   const posterSize = isLargeScreen ? "w780" : "w342";
   const posterUrl = tmdbImageUrl(movie.posterPath, posterSize);
@@ -41,14 +40,14 @@ export function MovieCard({ movie, onPlay, onRate, onWatched, blurIfXxxRated = f
     <motion.div
       whileHover={{ scale: 1.03, y: -4 }}
       transition={{ type: "spring", stiffness: 300, damping: 24 }}
-      className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.4)] transition-shadow duration-300 hover:shadow-[0_16px_48px_rgba(212,168,83,0.08)]"
+      className="group relative flex h-full flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.4)] transition-shadow duration-300 hover:shadow-[0_16px_48px_rgba(212,168,83,0.08)]"
     >
-      <div className={shouldBlur ? "blur-xl select-none" : ""}>
+      <div className={`flex min-h-0 flex-1 flex-col ${shouldBlur ? "blur-xl select-none" : ""}`}>
         {/* ── Poster ─────────────────────── */}
         <Link
           href={`/movies/${movie.id}`}
           aria-label={`Open details for ${movie.titleClean}`}
-          className="relative block aspect-[2/3] w-full overflow-hidden bg-background"
+          className="relative block aspect-[2/3] w-full shrink-0 overflow-hidden bg-background"
         >
         {posterUrl ? (
           <Image
@@ -72,7 +71,7 @@ export function MovieCard({ movie, onPlay, onRate, onWatched, blurIfXxxRated = f
         </Link>
 
         {/* ── Details ────────────────────── */}
-        <div className="flex flex-1 flex-col gap-3 p-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
         <Link
           href={`/movies/${movie.id}`}
           className="block min-w-0"
@@ -157,28 +156,6 @@ export function MovieCard({ movie, onPlay, onRate, onWatched, blurIfXxxRated = f
               Trailer
             </a>
           ) : null}
-        </div>
-
-        {/* ── Personal rating ──────────── */}
-        <div className="flex items-center justify-between text-xs text-muted 2xl:text-sm">
-          <span>Your rating</span>
-          <select
-            value={movie.personalRating ?? ""}
-            onChange={(event) =>
-              onRate(
-                movie.id,
-                event.target.value === "" ? null : Number(event.target.value)
-              )
-            }
-            className="rounded-md border border-border bg-surface px-3 py-1 text-xs text-foreground transition-colors hover:border-border-hover 2xl:px-3 2xl:py-2 2xl:text-sm"
-          >
-            <option value="">{"\u2014"}</option>
-            {Array.from({ length: 11 }).map((_, index) => (
-              <option key={index} value={index}>
-                {index}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
       </div>

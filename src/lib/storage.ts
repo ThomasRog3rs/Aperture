@@ -68,7 +68,9 @@ export type EpisodeUpsert = {
   lastSyncedAt: number;
 };
 
-export type EpisodeRow = EpisodeUpsert;
+export type EpisodeRow = EpisodeUpsert & {
+  watched: number;
+};
 
 export type SeriesUpsert = {
   id: string;
@@ -691,6 +693,33 @@ export function getEpisodeCountsBySeasonIds(seasonIds: string[]): Map<string, nu
     .all(...seasonIds) as Array<{ seasonId: string; count: number }>;
   rows.forEach((row) => counts.set(row.seasonId, row.count));
   return counts;
+}
+
+export function getEpisodeById(id: string): EpisodeRow | null {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM episodes WHERE id = ?").get(id);
+  return (row as EpisodeRow | undefined) ?? null;
+}
+
+export type EpisodeUpdate = {
+  watched?: number;
+};
+
+export function updateEpisode(id: string, updates: EpisodeUpdate) {
+  const db = getDb();
+  const entries = Object.entries(updates).filter(([, value]) => value !== undefined);
+  if (entries.length === 0) return;
+
+  const setClauses = entries.map(([key]) => `${key} = @${key}`).join(", ");
+  const params = entries.reduce(
+    (acc, [key, value]) => {
+      acc[key] = value;
+      return acc;
+    },
+    { id } as Record<string, string | number | null>
+  );
+
+  db.prepare(`UPDATE episodes SET ${setClauses} WHERE id = @id`).run(params);
 }
 
 export function deleteEpisodesNotInSeason(
