@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import {
   getEpisodesBySeasonId,
-  listSeriesFolderPaths,
+  getSeriesByFolderPath,
+  getSeriesFolderPathById,
   listSeasonsBySeriesFolderPath,
+  updateSeries,
+  upsertSeries,
 } from "@/lib/storage";
 import { getSeriesId, getSeriesTitle } from "@/lib/series";
 import type { Episode, Season, SeasonWithEpisodes, Series } from "@/lib/types";
@@ -72,14 +75,6 @@ function pickSeriesPoster(seasons: Season[]): string | null {
   return sorted[0].posterPath ?? null;
 }
 
-function resolveSeriesFolderPath(seriesId: string): string | null {
-  const folders = listSeriesFolderPaths();
-  for (const folder of folders) {
-    if (getSeriesId(folder) === seriesId) return folder;
-  }
-  return null;
-}
-
 export async function GET(
   _request: Request,
   context: { params: Promise<{ id?: string }> }
@@ -89,7 +84,7 @@ export async function GET(
     return NextResponse.json({ error: "id is required." }, { status: 400 });
   }
 
-  const seriesFolderPath = resolveSeriesFolderPath(id);
+  const seriesFolderPath = getSeriesFolderPathById(id);
   if (!seriesFolderPath) {
     return NextResponse.json({ error: "Series not found." }, { status: 404 });
   }
@@ -107,12 +102,128 @@ export async function GET(
     };
   });
 
-  const { titleClean } = getSeriesTitle(seriesFolderPath);
+  const seriesRow = getSeriesByFolderPath(seriesFolderPath);
+  const { titleClean } = seriesRow
+    ? { titleClean: seriesRow.titleClean }
+    : getSeriesTitle(seriesFolderPath);
   const series: Series = {
     id: getSeriesId(seriesFolderPath),
     titleClean,
     seasonCount: seasonsWithEpisodes.length,
-    posterPath: pickSeriesPoster(seasonsWithEpisodes),
+    posterPath: seriesRow?.posterPath ?? pickSeriesPoster(seasonsWithEpisodes),
+    seasons: seasonsWithEpisodes,
+  };
+
+  return NextResponse.json({ series, seasons: seasonsWithEpisodes });
+}
+
+export async function PATCH(
+  request: Request,
+  context: { params: Promise<{ id?: string }> }
+) {
+  const { id } = await context.params;
+  if (!id) {
+    return NextResponse.json({ error: "id is required." }, { status: 400 });
+  }
+
+  const seriesFolderPath = getSeriesFolderPathById(id);
+  if (!seriesFolderPath) {
+    return NextResponse.json({ error: "Series not found." }, { status: 404 });
+  }
+
+  const body = (await request.json().catch(() => null)) as
+    | {
+        titleClean?: string;
+        posterPath?: string | null;
+      }
+    | null;
+
+  if (!body) {
+    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  const updates: {
+    titleClean?: string;
+    titleEditedAt?: number;
+    posterPath?: string | null;
+    lastSyncedAt?: number;
+  } = {};
+
+  if (body.titleClean !== undefined) {
+    if (typeof body.titleClean !== "string" || !body.titleClean.trim()) {
+      return NextResponse.json(
+        { error: "titleClean must be a non-empty string." },
+        { status: 400 }
+      );
+    }
+    updates.titleClean = body.titleClean.trim();
+    updates.titleEditedAt = Date.now();
+  }
+
+  if (body.posterPath !== undefined) {
+    if (body.posterPath === null) {
+      updates.posterPath = null;
+    } else if (typeof body.posterPath === "string") {
+      updates.posterPath = body.posterPath.trim() || null;
+    } else {
+      return NextResponse.json(
+        { error: "posterPath must be a string or null." },
+        { status: 400 }
+      );
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json(
+      { error: "No valid fields provided." },
+      { status: 400 }
+    );
+  }
+
+  let seriesRow = getSeriesByFolderPath(seriesFolderPath);
+  if (!seriesRow) {
+    const derived = getSeriesTitle(seriesFolderPath);
+    upsertSeries({
+      id: getSeriesId(seriesFolderPath),
+      seriesFolderPath,
+      titleClean: derived.titleClean,
+      titleEditedAt: null,
+      year: derived.year,
+      tmdbId: null,
+      posterPath: null,
+      tmdbRating: null,
+      genres: [],
+      userGenres: [],
+      errorMessage: null,
+      lastSyncedAt: Date.now(),
+    });
+    seriesRow = getSeriesByFolderPath(seriesFolderPath);
+  }
+
+  updateSeries(id, { ...updates, lastSyncedAt: Date.now() });
+
+  const seasonRows = listSeasonsBySeriesFolderPath(seriesFolderPath);
+  const seasons = seasonRows.map((row) => mapRowToSeason(row));
+  sortSeasons(seasons);
+
+  const seasonsWithEpisodes: SeasonWithEpisodes[] = seasons.map((season) => {
+    const episodes = mapEpisodes(getEpisodesBySeasonId(season.id));
+    return {
+      ...season,
+      episodeCount: episodes.length,
+      episodes,
+    };
+  });
+
+  const updatedSeriesRow = getSeriesByFolderPath(seriesFolderPath);
+  const { titleClean } = updatedSeriesRow
+    ? { titleClean: updatedSeriesRow.titleClean }
+    : getSeriesTitle(seriesFolderPath);
+  const series: Series = {
+    id: getSeriesId(seriesFolderPath),
+    titleClean,
+    seasonCount: seasonsWithEpisodes.length,
+    posterPath: updatedSeriesRow?.posterPath ?? pickSeriesPoster(seasonsWithEpisodes),
     seasons: seasonsWithEpisodes,
   };
 

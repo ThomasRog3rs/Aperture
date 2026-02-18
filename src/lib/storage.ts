@@ -1,4 +1,5 @@
 import { getDb } from "./db";
+import { getSeriesId } from "@/lib/series";
 
 export type MovieUpsert = {
   id: string;
@@ -68,6 +69,26 @@ export type EpisodeUpsert = {
 };
 
 export type EpisodeRow = EpisodeUpsert;
+
+export type SeriesUpsert = {
+  id: string;
+  seriesFolderPath: string;
+  titleClean: string;
+  titleEditedAt: number | null;
+  year: number | null;
+  tmdbId: number | null;
+  posterPath: string | null;
+  tmdbRating: number | null;
+  genres: string[];
+  userGenres: string[];
+  errorMessage: string | null;
+  lastSyncedAt: number;
+};
+
+export type SeriesRow = Omit<SeriesUpsert, "genres" | "userGenres"> & {
+  genresJson: string;
+  userGenresJson: string;
+};
 
 export type MovieQuery = {
   q?: string;
@@ -273,6 +294,57 @@ export function upsertEpisode(episode: EpisodeUpsert) {
   ).run(episode);
 }
 
+export function upsertSeries(series: SeriesUpsert) {
+  const db = getDb();
+  db.prepare(
+    `
+    INSERT INTO series (
+      id,
+      seriesFolderPath,
+      titleClean,
+      titleEditedAt,
+      year,
+      tmdbId,
+      posterPath,
+      tmdbRating,
+      genresJson,
+      userGenresJson,
+      errorMessage,
+      lastSyncedAt
+    ) VALUES (
+      @id,
+      @seriesFolderPath,
+      @titleClean,
+      @titleEditedAt,
+      @year,
+      @tmdbId,
+      @posterPath,
+      @tmdbRating,
+      @genresJson,
+      @userGenresJson,
+      @errorMessage,
+      @lastSyncedAt
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      seriesFolderPath = excluded.seriesFolderPath,
+      titleClean = excluded.titleClean,
+      titleEditedAt = excluded.titleEditedAt,
+      year = excluded.year,
+      tmdbId = excluded.tmdbId,
+      posterPath = excluded.posterPath,
+      tmdbRating = excluded.tmdbRating,
+      genresJson = excluded.genresJson,
+      userGenresJson = excluded.userGenresJson,
+      errorMessage = excluded.errorMessage,
+      lastSyncedAt = excluded.lastSyncedAt
+    `
+  ).run({
+    ...series,
+    genresJson: JSON.stringify(series.genres),
+    userGenresJson: JSON.stringify(series.userGenres),
+  });
+}
+
 export function listMovies(query: MovieQuery): MovieRow[] {
   const db = getDb();
   const where: string[] = [];
@@ -392,6 +464,14 @@ export function listSeriesFolderPaths(): string[] {
   return rows.map((row) => row.seriesFolderPath);
 }
 
+export function getSeriesFolderPathById(seriesId: string): string | null {
+  const folders = listSeriesFolderPaths();
+  for (const folder of folders) {
+    if (getSeriesId(folder) === seriesId) return folder;
+  }
+  return null;
+}
+
 export function listGenres(): string[] {
   const db = getDb();
   const rows = db
@@ -502,6 +582,35 @@ export function updateSeason(id: string, updates: SeasonUpdate) {
   db.prepare(`UPDATE seasons SET ${setClauses} WHERE id = @id`).run(params);
 }
 
+export type SeriesUpdate = {
+  titleClean?: string;
+  titleEditedAt?: number | null;
+  posterPath?: string | null;
+  tmdbId?: number | null;
+  tmdbRating?: number | null;
+  genresJson?: string;
+  userGenresJson?: string;
+  errorMessage?: string | null;
+  lastSyncedAt?: number;
+};
+
+export function updateSeries(id: string, updates: SeriesUpdate) {
+  const db = getDb();
+  const entries = Object.entries(updates).filter(([, value]) => value !== undefined);
+  if (entries.length === 0) return;
+
+  const setClauses = entries.map(([key]) => `${key} = @${key}`).join(", ");
+  const params = entries.reduce(
+    (acc, [key, value]) => {
+      acc[key] = value;
+      return acc;
+    },
+    { id } as Record<string, string | number | null>
+  );
+
+  db.prepare(`UPDATE series SET ${setClauses} WHERE id = @id`).run(params);
+}
+
 export function updatePersonalRating(id: string, personalRating: number | null) {
   const db = getDb();
   db.prepare(
@@ -519,6 +628,20 @@ export function getSeasonById(id: string): SeasonRow | null {
   const db = getDb();
   const row = db.prepare("SELECT * FROM seasons WHERE id = ?").get(id);
   return (row as SeasonRow | undefined) ?? null;
+}
+
+export function getSeriesById(id: string): SeriesRow | null {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM series WHERE id = ?").get(id);
+  return (row as SeriesRow | undefined) ?? null;
+}
+
+export function getSeriesByFolderPath(seriesFolderPath: string): SeriesRow | null {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT * FROM series WHERE seriesFolderPath = ?")
+    .get(seriesFolderPath);
+  return (row as SeriesRow | undefined) ?? null;
 }
 
 export function deleteSeasonById(id: string) {

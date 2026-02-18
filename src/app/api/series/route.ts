@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { getEpisodeCountsBySeasonIds, listSeasons } from "@/lib/storage";
+import {
+  getEpisodeCountsBySeasonIds,
+  getSeriesByFolderPath,
+  listSeasons,
+} from "@/lib/storage";
 import { getSeriesId, getSeriesTitle } from "@/lib/series";
 import type { Season, Series } from "@/lib/types";
 
@@ -105,12 +109,15 @@ export async function GET(request: Request) {
   const series: Series[] = [];
   for (const [seriesFolderPath, seriesSeasons] of grouped.entries()) {
     sortSeasons(seriesSeasons);
-    const { titleClean } = getSeriesTitle(seriesFolderPath);
+    const seriesRow = getSeriesByFolderPath(seriesFolderPath);
+    const { titleClean } = seriesRow
+      ? { titleClean: seriesRow.titleClean }
+      : getSeriesTitle(seriesFolderPath);
     series.push({
       id: getSeriesId(seriesFolderPath),
       titleClean,
       seasonCount: seriesSeasons.length,
-      posterPath: pickSeriesPoster(seriesSeasons),
+      posterPath: seriesRow?.posterPath ?? pickSeriesPoster(seriesSeasons),
       seasons: seriesSeasons,
     });
   }

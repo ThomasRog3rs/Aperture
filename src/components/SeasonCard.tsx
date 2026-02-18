@@ -20,6 +20,7 @@ export function SeasonCard({ season, blurIfXxxRated = false }: SeasonCardProps) 
   const posterUrl = tmdbImageUrl(season.posterPath, posterSize);
   const shouldBlur = blurIfXxxRated && season.xxxRated;
   const episodeCount = season.episodeCount ?? null;
+  const seriesTarget = season.seriesId ?? season.id;
 
   return (
     <motion.div
@@ -29,7 +30,7 @@ export function SeasonCard({ season, blurIfXxxRated = false }: SeasonCardProps) 
     >
       <div className={shouldBlur ? "blur-xl select-none" : ""}>
         <Link
-          href={`/seasons/${season.id}`}
+          href={`/series/${seriesTarget}`}
           aria-label={`Open season details for ${season.titleClean}`}
           className="relative block aspect-[2/3] w-full overflow-hidden bg-background"
         >
@@ -54,7 +55,7 @@ export function SeasonCard({ season, blurIfXxxRated = false }: SeasonCardProps) 
 
         <div className="flex flex-1 flex-col gap-3 p-4">
           <Link
-            href={`/seasons/${season.id}`}
+            href={`/series/${seriesTarget}`}
             className="block min-w-0"
             aria-label={`Open season details for ${season.titleClean}`}
           >
@@ -91,7 +92,7 @@ export function SeasonCard({ season, blurIfXxxRated = false }: SeasonCardProps) 
 
           <div className="mt-auto flex items-center justify-between gap-2 pt-1">
             <Link
-              href={`/seasons/${season.id}`}
+              href={`/series/${seriesTarget}`}
               className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-background transition-all duration-200 hover:bg-accent-hover 2xl:px-3 2xl:py-2 2xl:text-sm"
             >
               View episodes
