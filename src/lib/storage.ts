@@ -29,6 +29,46 @@ export type MovieRow = Omit<MovieUpsert, "genres" | "userGenres"> & {
   watched: number;
 };
 
+export type SeasonUpsert = {
+  id: string;
+  seriesFolderPath: string;
+  seasonFolderPath: string;
+  seasonNumber: number | null;
+  titleRaw: string;
+  titleClean: string;
+  titleEditedAt: number | null;
+  year: number | null;
+  tmdbId: number | null;
+  posterPath: string | null;
+  backdropPath: string | null;
+  tmdbRating: number | null;
+  genres: string[];
+  userGenres: string[];
+  personalRating: number | null;
+  errorMessage: string | null;
+  lastSyncedAt: number;
+  xxxRated: number;
+  watched: number;
+};
+
+export type SeasonRow = Omit<SeasonUpsert, "genres" | "userGenres"> & {
+  genresJson: string;
+  userGenresJson: string;
+};
+
+export type EpisodeUpsert = {
+  id: string;
+  seasonId: string;
+  episodeNumber: number | null;
+  titleRaw: string;
+  titleClean: string;
+  filePath: string;
+  fileSizeBytes: number;
+  lastSyncedAt: number;
+};
+
+export type EpisodeRow = EpisodeUpsert;
+
 export type MovieQuery = {
   q?: string;
   genre?: string;
@@ -36,6 +76,8 @@ export type MovieQuery = {
   watched?: "all" | "watched" | "unwatched";
   sort?: "title" | "rating" | "recent";
 };
+
+export type SeasonQuery = MovieQuery;
 
 export function getSetting(key: string): string | null {
   const db = getDb();
@@ -124,6 +166,113 @@ export function upsertMovie(movie: MovieUpsert) {
   });
 }
 
+export function upsertSeason(season: SeasonUpsert) {
+  const db = getDb();
+  db.prepare(
+    `
+    INSERT INTO seasons (
+      id,
+      seriesFolderPath,
+      seasonFolderPath,
+      seasonNumber,
+      titleRaw,
+      titleClean,
+      titleEditedAt,
+      year,
+      tmdbId,
+      posterPath,
+      backdropPath,
+      tmdbRating,
+      genresJson,
+      userGenresJson,
+      personalRating,
+      errorMessage,
+      lastSyncedAt,
+      xxxRated,
+      watched
+    ) VALUES (
+      @id,
+      @seriesFolderPath,
+      @seasonFolderPath,
+      @seasonNumber,
+      @titleRaw,
+      @titleClean,
+      @titleEditedAt,
+      @year,
+      @tmdbId,
+      @posterPath,
+      @backdropPath,
+      @tmdbRating,
+      @genresJson,
+      @userGenresJson,
+      @personalRating,
+      @errorMessage,
+      @lastSyncedAt,
+      @xxxRated,
+      @watched
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      seriesFolderPath = excluded.seriesFolderPath,
+      seasonFolderPath = excluded.seasonFolderPath,
+      seasonNumber = excluded.seasonNumber,
+      titleRaw = excluded.titleRaw,
+      titleClean = excluded.titleClean,
+      titleEditedAt = excluded.titleEditedAt,
+      year = excluded.year,
+      tmdbId = excluded.tmdbId,
+      posterPath = excluded.posterPath,
+      backdropPath = excluded.backdropPath,
+      tmdbRating = excluded.tmdbRating,
+      genresJson = excluded.genresJson,
+      userGenresJson = excluded.userGenresJson,
+      personalRating = excluded.personalRating,
+      errorMessage = excluded.errorMessage,
+      lastSyncedAt = excluded.lastSyncedAt,
+      xxxRated = excluded.xxxRated,
+      watched = excluded.watched
+    `
+  ).run({
+    ...season,
+    genresJson: JSON.stringify(season.genres),
+    userGenresJson: JSON.stringify(season.userGenres),
+  });
+}
+
+export function upsertEpisode(episode: EpisodeUpsert) {
+  const db = getDb();
+  db.prepare(
+    `
+    INSERT INTO episodes (
+      id,
+      seasonId,
+      episodeNumber,
+      titleRaw,
+      titleClean,
+      filePath,
+      fileSizeBytes,
+      lastSyncedAt
+    ) VALUES (
+      @id,
+      @seasonId,
+      @episodeNumber,
+      @titleRaw,
+      @titleClean,
+      @filePath,
+      @fileSizeBytes,
+      @lastSyncedAt
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      seasonId = excluded.seasonId,
+      episodeNumber = excluded.episodeNumber,
+      titleRaw = excluded.titleRaw,
+      titleClean = excluded.titleClean,
+      filePath = excluded.filePath,
+      fileSizeBytes = excluded.fileSizeBytes,
+      lastSyncedAt = excluded.lastSyncedAt
+    `
+  ).run(episode);
+}
+
 export function listMovies(query: MovieQuery): MovieRow[] {
   const db = getDb();
   const where: string[] = [];
@@ -171,10 +320,61 @@ export function listMovies(query: MovieQuery): MovieRow[] {
   return db.prepare(sql).all(params) as MovieRow[];
 }
 
+export function listSeasons(query: SeasonQuery): SeasonRow[] {
+  const db = getDb();
+  const where: string[] = [];
+  const params: Record<string, string | number> = {};
+
+  if (query.q) {
+    where.push("(LOWER(titleClean) LIKE @q OR LOWER(titleRaw) LIKE @q)");
+    params.q = `%${query.q.toLowerCase()}%`;
+  }
+
+  if (query.genre) {
+    where.push("(genresJson LIKE @genre OR userGenresJson LIKE @genre)");
+    params.genre = `%\"${query.genre}\"%`;
+  }
+
+  if (typeof query.minPersonalRating === "number") {
+    where.push("personalRating >= @minPersonalRating");
+    params.minPersonalRating = query.minPersonalRating;
+  }
+
+  if (query.watched === "watched") {
+    where.push("watched = 1");
+  } else if (query.watched === "unwatched") {
+    where.push("watched = 0");
+  }
+
+  const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+
+  let orderBy = "titleClean ASC";
+  if (query.sort === "rating") {
+    orderBy = "tmdbRating IS NULL, tmdbRating DESC";
+  } else if (query.sort === "recent") {
+    orderBy = "lastSyncedAt DESC";
+  }
+
+  const sql = `
+    SELECT *
+    FROM seasons
+    ${whereClause}
+    ORDER BY ${orderBy}
+  `;
+
+  return db.prepare(sql).all(params) as SeasonRow[];
+}
+
 export function listGenres(): string[] {
   const db = getDb();
   const rows = db
-    .prepare("SELECT genresJson, userGenresJson FROM movies")
+    .prepare(
+      `
+      SELECT genresJson, userGenresJson FROM movies
+      UNION ALL
+      SELECT genresJson, userGenresJson FROM seasons
+      `
+    )
     .all() as { genresJson: string | null; userGenresJson: string | null }[];
   const unique = new Map<string, string>();
 
@@ -241,6 +441,40 @@ export function updateMovie(id: string, updates: MovieUpdate) {
   db.prepare(`UPDATE movies SET ${setClauses} WHERE id = @id`).run(params);
 }
 
+export type SeasonUpdate = {
+  titleRaw?: string;
+  titleClean?: string;
+  titleEditedAt?: number | null;
+  posterPath?: string | null;
+  tmdbId?: number | null;
+  backdropPath?: string | null;
+  tmdbRating?: number | null;
+  genresJson?: string;
+  userGenresJson?: string;
+  errorMessage?: string | null;
+  lastSyncedAt?: number;
+  personalRating?: number | null;
+  xxxRated?: number | null;
+  watched?: number | null;
+};
+
+export function updateSeason(id: string, updates: SeasonUpdate) {
+  const db = getDb();
+  const entries = Object.entries(updates).filter(([, value]) => value !== undefined);
+  if (entries.length === 0) return;
+
+  const setClauses = entries.map(([key]) => `${key} = @${key}`).join(", ");
+  const params = entries.reduce(
+    (acc, [key, value]) => {
+      acc[key] = value;
+      return acc;
+    },
+    { id } as Record<string, string | number | null>
+  );
+
+  db.prepare(`UPDATE seasons SET ${setClauses} WHERE id = @id`).run(params);
+}
+
 export function updatePersonalRating(id: string, personalRating: number | null) {
   const db = getDb();
   db.prepare(
@@ -252,5 +486,79 @@ export function getMovieById(id: string): MovieRow | null {
   const db = getDb();
   const row = db.prepare("SELECT * FROM movies WHERE id = ?").get(id);
   return (row as MovieRow | undefined) ?? null;
+}
+
+export function getSeasonById(id: string): SeasonRow | null {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM seasons WHERE id = ?").get(id);
+  return (row as SeasonRow | undefined) ?? null;
+}
+
+export function deleteSeasonById(id: string) {
+  const db = getDb();
+  db.prepare("DELETE FROM seasons WHERE id = ?").run(id);
+}
+
+export function getEpisodesBySeasonId(seasonId: string): EpisodeRow[] {
+  const db = getDb();
+  return db
+    .prepare(
+      `
+      SELECT *
+      FROM episodes
+      WHERE seasonId = ?
+      ORDER BY
+        CASE WHEN episodeNumber IS NULL THEN 1 ELSE 0 END,
+        episodeNumber ASC,
+        titleClean ASC
+      `
+    )
+    .all(seasonId) as EpisodeRow[];
+}
+
+export function countEpisodesBySeasonId(seasonId: string): number {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT COUNT(*) as count FROM episodes WHERE seasonId = ?")
+    .get(seasonId) as { count: number } | undefined;
+  return row?.count ?? 0;
+}
+
+export function getEpisodeCountsBySeasonIds(seasonIds: string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  if (seasonIds.length === 0) return counts;
+  const db = getDb();
+  const placeholders = seasonIds.map(() => "?").join(", ");
+  const rows = db
+    .prepare(
+      `
+      SELECT seasonId, COUNT(*) as count
+      FROM episodes
+      WHERE seasonId IN (${placeholders})
+      GROUP BY seasonId
+      `
+    )
+    .all(...seasonIds) as Array<{ seasonId: string; count: number }>;
+  rows.forEach((row) => counts.set(row.seasonId, row.count));
+  return counts;
+}
+
+export function deleteEpisodesNotInSeason(
+  seasonId: string,
+  filePaths: string[]
+) {
+  const db = getDb();
+  if (filePaths.length === 0) {
+    db.prepare("DELETE FROM episodes WHERE seasonId = ?").run(seasonId);
+    return;
+  }
+  const placeholders = filePaths.map(() => "?").join(", ");
+  db.prepare(
+    `
+    DELETE FROM episodes
+    WHERE seasonId = ?
+    AND filePath NOT IN (${placeholders})
+    `
+  ).run(seasonId, ...filePaths);
 }
 

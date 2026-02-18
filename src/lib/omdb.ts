@@ -90,13 +90,14 @@ export type OmdbMovie = {
   youtubeTrailerKey: string | null;
 };
 
-export async function resolveOmdbMovie(
+async function resolveOmdbTitle(
   title: string,
+  type: "movie" | "series",
   year?: number | null
 ): Promise<OmdbMovie | null> {
   const search = (await omdbFetch({
     s: title,
-    type: "movie",
+    type,
     ...(year ? { y: String(year) } : {}),
   })) as OmdbSearchResponse;
 
@@ -123,5 +124,19 @@ export async function resolveOmdbMovie(
     genres: parseGenres(details.Genre),
     youtubeTrailerKey: null,
   };
+}
+
+export async function resolveOmdbMovie(
+  title: string,
+  year?: number | null
+): Promise<OmdbMovie | null> {
+  return resolveOmdbTitle(title, "movie", year);
+}
+
+export async function resolveOmdbSeries(
+  title: string,
+  year?: number | null
+): Promise<OmdbMovie | null> {
+  return resolveOmdbTitle(title, "series", year);
 }
 

@@ -6,7 +6,7 @@ import { MovieGrid } from "@/components/MovieGrid";
 import { StatusBanner } from "@/components/StatusBanner";
 import { TopBar } from "@/components/TopBar";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import type { Movie } from "@/lib/types";
+import type { Movie, Season } from "@/lib/types";
 
 type SyncSummary = {
   scanned: number;
@@ -25,6 +25,7 @@ type FilterOptionsResponse = {
 
 export function LibraryView() {
   const [movies, setMovies] = useState<Movie[]>([]);
+  const [seasons, setSeasons] = useState<Season[]>([]);
   const [query, setQuery] = useState("");
   const [genre, setGenre] = useState("All");
   const [minRating, setMinRating] = useState<number | null>(null);
@@ -53,7 +54,7 @@ export function LibraryView() {
     setAvailableGenres(data.genres ?? []);
   }, []);
 
-  const fetchMovies = useCallback(async () => {
+  const fetchLibrary = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
     if (debouncedQuery) params.set("q", debouncedQuery);
@@ -64,9 +65,14 @@ export function LibraryView() {
     if (watched !== "all") params.set("watched", watched);
     params.set("sort", sort);
 
-    const response = await fetch(`/api/movies?${params.toString()}`);
-    const data = (await response.json()) as { movies: Movie[] };
-    setMovies(data.movies ?? []);
+    const [moviesResponse, seasonsResponse] = await Promise.all([
+      fetch(`/api/movies?${params.toString()}`),
+      fetch(`/api/seasons?${params.toString()}`),
+    ]);
+    const moviesData = (await moviesResponse.json()) as { movies: Movie[] };
+    const seasonsData = (await seasonsResponse.json()) as { seasons: Season[] };
+    setMovies(moviesData.movies ?? []);
+    setSeasons(seasonsData.seasons ?? []);
     setLoading(false);
   }, [debouncedQuery, genre, minRating, watched, sort]);
 
@@ -83,33 +89,56 @@ export function LibraryView() {
   }, [fetchFilterOptions]);
 
   useEffect(() => {
-    fetchMovies().catch(() => {
-      setNotice({ tone: "error", message: "Failed to load movies." });
+    fetchLibrary().catch(() => {
+      setNotice({ tone: "error", message: "Failed to load library." });
       setLoading(false);
     });
-  }, [fetchMovies]);
+  }, [fetchLibrary]);
 
   const lastSyncedAt = useMemo(() => {
-    if (movies.length === 0) return null;
-    return movies.reduce((latest, movie) => {
-      return movie.lastSyncedAt > latest ? movie.lastSyncedAt : latest;
-    }, movies[0].lastSyncedAt);
-  }, [movies]);
+    const timestamps = [...movies, ...seasons]
+      .map((entry) => entry.lastSyncedAt)
+      .filter((value) => typeof value === "number");
+    if (timestamps.length === 0) return null;
+    return Math.max(...timestamps);
+  }, [movies, seasons]);
 
   const handleSync = useCallback(async () => {
     setSyncing(true);
     setNotice(null);
     try {
       const response = await fetch("/api/sync", { method: "POST" });
-      const data = (await response.json()) as SyncSummary & { error?: string };
+      const data = (await response.json()) as
+        | (SyncSummary & { error?: string })
+        | {
+            movies: SyncSummary;
+            seasons: SyncSummary;
+            error?: string;
+          };
       if (!response.ok) {
-        throw new Error(data.error || "Sync failed.");
+        const error =
+          "error" in data && data.error ? data.error : "Sync failed.";
+        throw new Error(error);
       }
+      const summary =
+        "movies" in data && "seasons" in data
+          ? {
+              updated: data.movies.updated + data.seasons.updated,
+              notFound: data.movies.notFound + data.seasons.notFound,
+              errors: data.movies.errors + data.seasons.errors,
+              label: `${data.movies.updated} movies, ${data.seasons.updated} seasons`,
+            }
+          : {
+              updated: data.updated,
+              notFound: data.notFound,
+              errors: data.errors,
+              label: `${data.updated} movies`,
+            };
       setNotice({
-        tone: data.errors > 0 ? "error" : "success",
-        message: `Synced ${data.updated} movies (${data.notFound} not found, ${data.errors} errors).`,
+        tone: summary.errors > 0 ? "error" : "success",
+        message: `Synced ${summary.label} (${summary.notFound} not found, ${summary.errors} errors).`,
       });
-      await fetchMovies();
+      await fetchLibrary();
       fetchFilterOptions().catch(() => {
         setNotice((current) =>
           current?.tone === "success"
@@ -126,7 +155,7 @@ export function LibraryView() {
     } finally {
       setSyncing(false);
     }
-  }, [fetchMovies]);
+  }, [fetchLibrary]);
 
   const handlePlay = useCallback(async (movie: Movie) => {
     if (!movie.filePath) {
@@ -188,6 +217,43 @@ export function LibraryView() {
     }
   }, []);
 
+  const items = useMemo(() => {
+    const merged: Array<
+      | { type: "movie"; movie: Movie }
+      | { type: "season"; season: Season }
+    > = [
+      ...movies.map((movie) => ({ type: "movie" as const, movie })),
+      ...seasons.map((season) => ({ type: "season" as const, season })),
+    ];
+
+    const getTitle = (entry: (typeof merged)[number]) =>
+      entry.type === "movie" ? entry.movie.titleClean : entry.season.titleClean;
+    const getRating = (entry: (typeof merged)[number]) =>
+      entry.type === "movie" ? entry.movie.tmdbRating : entry.season.tmdbRating;
+    const getSyncedAt = (entry: (typeof merged)[number]) =>
+      entry.type === "movie"
+        ? entry.movie.lastSyncedAt
+        : entry.season.lastSyncedAt;
+
+    merged.sort((a, b) => {
+      if (sort === "rating") {
+        const aRating = getRating(a);
+        const bRating = getRating(b);
+        if (aRating == null && bRating != null) return 1;
+        if (aRating != null && bRating == null) return -1;
+        if (aRating != null && bRating != null && aRating !== bRating) {
+          return bRating - aRating;
+        }
+      } else if (sort === "recent") {
+        const diff = getSyncedAt(b) - getSyncedAt(a);
+        if (diff !== 0) return diff;
+      }
+      return getTitle(a).localeCompare(getTitle(b));
+    });
+
+    return merged;
+  }, [movies, seasons, sort]);
+
   return (
     <div className="min-h-screen">
       <TopBar
@@ -240,14 +306,17 @@ export function LibraryView() {
         ) : null}
 
         {/* ── Empty collection ────────────── */}
-        {!loading && libraryRootPath && movies.length === 0 ? (
+        {!loading &&
+        libraryRootPath &&
+        movies.length === 0 &&
+        seasons.length === 0 ? (
           <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-surface p-12 text-center 2xl:p-16">
             <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-accent-muted text-accent 2xl:h-16 2xl:w-16">
               <Clapperboard className="h-7 w-7 2xl:h-8 2xl:w-8" />
             </div>
             <div>
               <p className="font-serif text-lg font-medium text-foreground 2xl:text-xl">
-                No movies yet
+                No titles yet
               </p>
               <p className="mt-1 max-w-md text-sm text-muted 2xl:text-base">
                 Click <strong className="text-foreground">Sync Library</strong>{" "}
@@ -257,13 +326,15 @@ export function LibraryView() {
           </div>
         ) : null}
 
-        {movies.length > 0 ? (
+        {items.length > 0 ? (
           <MovieGrid
-            key={movies.map((m) => m.id).join(",")}
-            movies={movies}
-            onPlay={handlePlay}
-            onRate={handleRate}
-            onWatched={handleWatched}
+            key={items.map((entry) =>
+              entry.type === "movie" ? entry.movie.id : entry.season.id
+            ).join(",")}
+            items={items}
+            onPlayMovie={handlePlay}
+            onRateMovie={handleRate}
+            onWatchedMovie={handleWatched}
             blurXxxRated={true}
           />
         ) : null}

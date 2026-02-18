@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { getMovieById } from "@/lib/storage";
+import { getSeasonById } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
@@ -26,17 +26,17 @@ export async function GET(
     return NextResponse.json({ error: "id is required." }, { status: 400 });
   }
 
-  const movie = getMovieById(id);
-  if (!movie) {
-    return NextResponse.json({ error: "Movie not found." }, { status: 404 });
+  const season = getSeasonById(id);
+  if (!season) {
+    return NextResponse.json({ error: "Season not found." }, { status: 404 });
   }
 
   let entries: Dirent[];
   try {
-    entries = await fs.readdir(movie.folderPath, { withFileTypes: true });
+    entries = await fs.readdir(season.seasonFolderPath, { withFileTypes: true });
   } catch {
     return NextResponse.json(
-      { error: "Failed to read movie folder." },
+      { error: "Failed to read season folder." },
       { status: 500 }
     );
   }
@@ -53,7 +53,7 @@ export async function GET(
     })
     .map((name) => ({
       name,
-      url: `/api/movies/${id}/folder-image?name=${encodeURIComponent(name)}`,
+      url: `/api/series/${id}/folder-image?name=${encodeURIComponent(name)}`,
     }));
 
   return NextResponse.json({ images });

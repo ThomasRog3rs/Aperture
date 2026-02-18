@@ -51,6 +51,43 @@ function ensureSchema(db: DbInstance) {
     CREATE INDEX IF NOT EXISTS idx_movies_tmdb_id ON movies (tmdbId);
     CREATE INDEX IF NOT EXISTS idx_movies_personal_rating ON movies (personalRating);
     CREATE INDEX IF NOT EXISTS idx_movies_title_clean ON movies (titleClean);
+
+    CREATE TABLE IF NOT EXISTS seasons (
+      id TEXT PRIMARY KEY,
+      seriesFolderPath TEXT NOT NULL,
+      seasonFolderPath TEXT NOT NULL,
+      seasonNumber INTEGER NULL,
+      titleRaw TEXT NOT NULL,
+      titleClean TEXT NOT NULL,
+      titleEditedAt INTEGER NULL,
+      year INTEGER NULL,
+      tmdbId INTEGER NULL,
+      posterPath TEXT NULL,
+      backdropPath TEXT NULL,
+      tmdbRating REAL NULL,
+      genresJson TEXT NOT NULL DEFAULT '[]',
+      userGenresJson TEXT NOT NULL DEFAULT '[]',
+      personalRating INTEGER NULL,
+      errorMessage TEXT NULL,
+      lastSyncedAt INTEGER NOT NULL,
+      xxxRated INTEGER NOT NULL DEFAULT 0,
+      watched INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS episodes (
+      id TEXT PRIMARY KEY,
+      seasonId TEXT NOT NULL,
+      episodeNumber INTEGER NULL,
+      titleRaw TEXT NOT NULL,
+      titleClean TEXT NOT NULL,
+      filePath TEXT NOT NULL,
+      fileSizeBytes INTEGER NOT NULL,
+      lastSyncedAt INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_seasons_tmdb_id ON seasons (tmdbId);
+    CREATE INDEX IF NOT EXISTS idx_seasons_title_clean ON seasons (titleClean);
+    CREATE INDEX IF NOT EXISTS idx_episodes_season_id ON episodes (seasonId);
   `);
 
   const columns = db

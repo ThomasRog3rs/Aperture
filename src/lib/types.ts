@@ -33,3 +33,38 @@ export type Movie = {
   watched: boolean;
 };
 
+export type Season = {
+  id: string;
+  seriesFolderPath: string;
+  seasonFolderPath: string;
+  seasonNumber: number | null;
+  titleRaw: string;
+  titleClean: string;
+  titleEditedAt: number | null;
+  year: number | null;
+  tmdbId: number | null;
+  posterPath: string | null;
+  backdropPath: string | null;
+  tmdbRating: number | null;
+  genres: string[];
+  omdbGenres?: string[];
+  userGenres?: string[];
+  personalRating: number | null;
+  errorMessage: string | null;
+  lastSyncedAt: number;
+  xxxRated: boolean;
+  watched: boolean;
+  episodeCount?: number;
+};
+
+export type Episode = {
+  id: string;
+  seasonId: string;
+  episodeNumber: number | null;
+  titleRaw: string;
+  titleClean: string;
+  filePath: string;
+  fileSizeBytes: number;
+  lastSyncedAt: number;
+};
+

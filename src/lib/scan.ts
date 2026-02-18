@@ -1,5 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import {
+  parseEpisodeFromFilename,
+  parseSeasonNumberFromFolder,
+} from "@/lib/parseSeasonEpisode";
 
 const VIDEO_EXTENSIONS = new Set([
   ".mkv",
@@ -17,6 +21,23 @@ export type ScannedMovie = {
   titleRaw: string;
   filePath: string;
   fileSizeBytes: number;
+  errorMessage: string | null;
+};
+
+export type ScannedEpisode = {
+  filePath: string;
+  fileSizeBytes: number;
+  episodeNumber: number | null;
+  titleRaw: string;
+  titleClean: string;
+};
+
+export type ScannedSeason = {
+  seasonFolderPath: string;
+  seriesFolderPath: string;
+  seasonNumber: number | null;
+  titleRaw: string;
+  episodes: ScannedEpisode[];
   errorMessage: string | null;
 };
 
@@ -42,35 +63,130 @@ async function findLargestVideoFile(
   return best;
 }
 
-export async function scanLibrary(libraryRootPath: string): Promise<ScannedMovie[]> {
+async function listVideoFiles(folderPath: string) {
+  const entries = await fs.readdir(folderPath, { withFileTypes: true });
+  const videos = await Promise.all(
+    entries.map(async (entry) => {
+      if (!entry.isFile()) return null;
+      const ext = path.extname(entry.name).toLowerCase();
+      if (!VIDEO_EXTENSIONS.has(ext)) return null;
+      const filePath = path.join(folderPath, entry.name);
+      const stat = await fs.stat(filePath);
+      return { filePath, size: stat.size, name: entry.name };
+    })
+  );
+  return videos.filter(Boolean) as Array<{
+    filePath: string;
+    size: number;
+    name: string;
+  }>;
+}
+
+export async function scanLibrary(
+  libraryRootPath: string
+): Promise<{ movies: ScannedMovie[]; seasons: ScannedSeason[] }> {
   const entries = await fs.readdir(libraryRootPath, { withFileTypes: true });
   const folderEntries = entries.filter((entry) => entry.isDirectory());
 
-  const movies = await Promise.all(
-    folderEntries.map(async (folder) => {
-      const folderPath = path.join(libraryRootPath, folder.name);
-      const largest = await findLargestVideoFile(folderPath);
+  const movies: ScannedMovie[] = [];
+  const seasons: ScannedSeason[] = [];
 
-      if (!largest) {
-        return {
-          folderPath,
-          titleRaw: folder.name,
-          filePath: "",
-          fileSizeBytes: 0,
-          errorMessage: "No video file found in folder.",
-        };
-      }
-
-      return {
+  for (const folder of folderEntries) {
+    const folderPath = path.join(libraryRootPath, folder.name);
+    let folderEntriesInner;
+    try {
+      folderEntriesInner = await fs.readdir(folderPath, { withFileTypes: true });
+    } catch {
+      movies.push({
         folderPath,
         titleRaw: folder.name,
-        filePath: largest.filePath,
-        fileSizeBytes: largest.size,
-        errorMessage: null,
-      };
-    })
-  );
+        filePath: "",
+        fileSizeBytes: 0,
+        errorMessage: "Failed to read folder.",
+      });
+      continue;
+    }
 
-  return movies;
+    const subFolders = folderEntriesInner.filter((entry) => entry.isDirectory());
+    const seasonCandidates = await Promise.all(
+      subFolders.map(async (subFolder) => {
+        const seasonNumber = parseSeasonNumberFromFolder(subFolder.name);
+        if (seasonNumber === null) return null;
+        const seasonFolderPath = path.join(folderPath, subFolder.name);
+        const videos = await listVideoFiles(seasonFolderPath);
+        if (videos.length === 0) return null;
+        return {
+          seasonFolderPath,
+          seasonNumber,
+          folderName: subFolder.name,
+          videos,
+        };
+      })
+    );
+    const validSeasons = seasonCandidates.filter(Boolean) as Array<{
+      seasonFolderPath: string;
+      seasonNumber: number | null;
+      folderName: string;
+      videos: Array<{ filePath: string; size: number; name: string }>;
+    }>;
+
+    if (validSeasons.length > 0) {
+      for (const season of validSeasons) {
+        const parsedEpisodes = season.videos
+          .map((video) => {
+            const parsed = parseEpisodeFromFilename(
+              video.name,
+              season.seasonNumber
+            );
+            if (parsed.episodeNumber === null) return null;
+            return {
+              filePath: video.filePath,
+              fileSizeBytes: video.size,
+              episodeNumber: parsed.episodeNumber,
+              titleRaw: video.name,
+              titleClean:
+                parsed.titleClean ||
+                path.parse(video.name).name ||
+                video.name,
+            };
+          })
+          .filter(Boolean) as ScannedEpisode[];
+
+        seasons.push({
+          seasonFolderPath: season.seasonFolderPath,
+          seriesFolderPath: folderPath,
+          seasonNumber: season.seasonNumber,
+          titleRaw: season.folderName,
+          episodes: parsedEpisodes,
+          errorMessage:
+            parsedEpisodes.length === 0
+              ? "No parseable episodes found in season."
+              : null,
+        });
+      }
+      continue;
+    }
+
+    const largest = await findLargestVideoFile(folderPath);
+    if (!largest) {
+      movies.push({
+        folderPath,
+        titleRaw: folder.name,
+        filePath: "",
+        fileSizeBytes: 0,
+        errorMessage: "No video file found in folder.",
+      });
+      continue;
+    }
+    movies.push({
+      folderPath,
+      titleRaw: folder.name,
+      filePath: largest.filePath,
+      fileSizeBytes: largest.size,
+      errorMessage: null,
+    });
+  }
+
+  return { movies, seasons };
 }
 

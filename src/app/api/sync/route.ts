@@ -1,9 +1,20 @@
 import crypto from "node:crypto";
+import path from "node:path";
 import { NextResponse } from "next/server";
 import { cleanTitle } from "@/lib/cleanTitle";
 import { scanLibrary } from "@/lib/scan";
-import { resolveOmdbMovie } from "@/lib/omdb";
-import { getMovieById, getSetting, upsertMovie } from "@/lib/storage";
+import { resolveOmdbMovie, resolveOmdbSeries } from "@/lib/omdb";
+import {
+  countEpisodesBySeasonId,
+  deleteEpisodesNotInSeason,
+  deleteSeasonById,
+  getMovieById,
+  getSeasonById,
+  getSetting,
+  upsertEpisode,
+  upsertMovie,
+  upsertSeason,
+} from "@/lib/storage";
 
 export const runtime = "nodejs";
 
@@ -43,8 +54,11 @@ export async function POST() {
   let updated = 0;
   let notFound = 0;
   let errors = 0;
+  let seasonsUpdated = 0;
+  let seasonsNotFound = 0;
+  let seasonsErrors = 0;
 
-  for (const entry of scanned) {
+  for (const entry of scanned.movies) {
     const id = crypto
       .createHash("sha1")
       .update(entry.folderPath)
@@ -125,11 +139,129 @@ export async function POST() {
     updated += 1;
   }
 
+  for (const season of scanned.seasons) {
+    const id = crypto
+      .createHash("sha1")
+      .update(season.seasonFolderPath)
+      .digest("hex");
+
+    const existing = getSeasonById(id);
+    const existingGenres = existing ? parseGenres(existing.genresJson) : [];
+    const existingUserGenres = existing ? parseGenres(existing.userGenresJson) : [];
+    const seriesTitleRaw = path.basename(season.seriesFolderPath);
+    const { titleClean: seriesTitleClean, year } = cleanTitle(seriesTitleRaw);
+    const derivedTitleClean = season.seasonNumber
+      ? `${seriesTitleClean} - Season ${season.seasonNumber}`
+      : `${seriesTitleClean} - ${season.titleRaw}`;
+    const titleEditedAt = existing?.titleEditedAt ?? null;
+    const titleClean = titleEditedAt
+      ? existing?.titleClean ?? derivedTitleClean
+      : derivedTitleClean;
+    const titleRaw = titleEditedAt
+      ? existing?.titleRaw ?? season.titleRaw
+      : season.titleRaw;
+    let errorMessage = season.errorMessage;
+    let tmdbData = null;
+
+    if (!errorMessage) {
+      try {
+        tmdbData = await resolveOmdbSeries(seriesTitleClean, year);
+      } catch (error) {
+        errorMessage =
+          error instanceof Error ? error.message : "OMDb lookup failed.";
+      }
+    }
+
+    if (!tmdbData && existing?.tmdbId) {
+      tmdbData = {
+        providerId: existing.tmdbId,
+        posterPath: existing.posterPath,
+        backdropPath: existing.backdropPath,
+        runtimeMinutes: null,
+        tmdbRating: existing.tmdbRating,
+        genres: existingGenres,
+        youtubeTrailerKey: null,
+      };
+    }
+
+    if (!tmdbData && !errorMessage) {
+      seasonsNotFound += 1;
+    }
+
+    if (errorMessage) {
+      seasonsErrors += 1;
+    }
+
+    const existingPoster = existing?.posterPath ?? null;
+    const keepPoster =
+      typeof existingPoster === "string" &&
+      (existingPoster.startsWith("http://") ||
+        existingPoster.startsWith("https://") ||
+        existingPoster.startsWith("/api/"));
+
+    upsertSeason({
+      id,
+      seriesFolderPath: season.seriesFolderPath,
+      seasonFolderPath: season.seasonFolderPath,
+      seasonNumber: season.seasonNumber,
+      titleRaw,
+      titleClean,
+      titleEditedAt,
+      year,
+      tmdbId: tmdbData?.providerId ?? null,
+      posterPath: keepPoster ? existingPoster : tmdbData?.posterPath ?? null,
+      backdropPath: tmdbData?.backdropPath ?? null,
+      tmdbRating: tmdbData?.tmdbRating ?? null,
+      genres: tmdbData?.genres ?? [],
+      userGenres: existingUserGenres,
+      personalRating: existing?.personalRating ?? null,
+      errorMessage,
+      lastSyncedAt: Date.now(),
+      xxxRated: existing?.xxxRated ?? 0,
+      watched: existing?.watched ?? 0,
+    });
+
+    const episodeFilePaths: string[] = [];
+    for (const episode of season.episodes) {
+      const episodeId = crypto
+        .createHash("sha1")
+        .update(episode.filePath)
+        .digest("hex");
+      episodeFilePaths.push(episode.filePath);
+      upsertEpisode({
+        id: episodeId,
+        seasonId: id,
+        episodeNumber: episode.episodeNumber,
+        titleRaw: episode.titleRaw,
+        titleClean: episode.titleClean,
+        filePath: episode.filePath,
+        fileSizeBytes: episode.fileSizeBytes,
+        lastSyncedAt: Date.now(),
+      });
+    }
+
+    deleteEpisodesNotInSeason(id, episodeFilePaths);
+    const episodeCount = countEpisodesBySeasonId(id);
+    if (episodeCount === 0 && !errorMessage) {
+      deleteSeasonById(id);
+    } else {
+      seasonsUpdated += 1;
+    }
+  }
+
   return NextResponse.json({
-    scanned: scanned.length,
-    updated,
-    notFound,
-    errors,
+    movies: {
+      scanned: scanned.movies.length,
+      updated,
+      notFound,
+      errors,
+    },
+    seasons: {
+      scanned: scanned.seasons.length,
+      updated: seasonsUpdated,
+      notFound: seasonsNotFound,
+      errors: seasonsErrors,
+    },
   });
 }
 
