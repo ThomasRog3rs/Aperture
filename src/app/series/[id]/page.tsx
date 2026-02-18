@@ -1,25 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Loader2, Play, Video } from "lucide-react";
+import { ArrowLeft, ChevronDown, Loader2, Play } from "lucide-react";
 import { StatusBanner } from "@/components/StatusBanner";
-import { formatRating, tmdbImageUrl } from "@/lib/format";
-import type { Episode, Season } from "@/lib/types";
+import { formatRating } from "@/lib/format";
+import type { Episode, SeasonWithEpisodes, Series } from "@/lib/types";
 
-type SeasonResponse = {
-  season: Season;
-  episodes: Episode[];
+type SeriesResponse = {
+  series: Series;
+  seasons: SeasonWithEpisodes[];
   error?: string;
 };
 
-export default function SeasonDetailPage() {
+export default function SeriesDetailPage() {
   const params = useParams<{ id?: string | string[] }>();
-  const seasonId = Array.isArray(params?.id) ? params.id[0] : params?.id;
-  const [season, setSeason] = useState<Season | null>(null);
-  const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const seriesId = Array.isArray(params?.id) ? params.id[0] : params?.id;
+  const [series, setSeries] = useState<Series | null>(null);
+  const [seasons, setSeasons] = useState<SeasonWithEpisodes[]>([]);
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState<string | null>(null);
   const [notice, setNotice] = useState<{
@@ -27,40 +26,40 @@ export default function SeasonDetailPage() {
     message: string;
   } | null>(null);
 
-  const fetchSeason = useCallback(async () => {
-    if (!seasonId) {
-      setNotice({ tone: "error", message: "Missing season id in URL." });
-      setSeason(null);
-      setEpisodes([]);
+  const fetchSeries = useCallback(async () => {
+    if (!seriesId) {
+      setNotice({ tone: "error", message: "Missing series id in URL." });
+      setSeries(null);
+      setSeasons([]);
       setLoading(false);
       return;
     }
     setLoading(true);
     setNotice(null);
     try {
-      const response = await fetch(`/api/series/${seasonId}`);
-      const data = (await response.json()) as SeasonResponse;
-      if (!response.ok || !data.season) {
-        throw new Error(data.error || "Season not found.");
+      const response = await fetch(`/api/series/${seriesId}`);
+      const data = (await response.json()) as SeriesResponse;
+      if (!response.ok || !data.series) {
+        throw new Error(data.error || "Series not found.");
       }
-      setSeason(data.season);
-      setEpisodes(data.episodes ?? []);
+      setSeries(data.series);
+      setSeasons(data.seasons ?? data.series.seasons ?? []);
     } catch (error) {
       setNotice({
         tone: "error",
         message:
-          error instanceof Error ? error.message : "Failed to load season.",
+          error instanceof Error ? error.message : "Failed to load series.",
       });
-      setSeason(null);
-      setEpisodes([]);
+      setSeries(null);
+      setSeasons([]);
     } finally {
       setLoading(false);
     }
-  }, [seasonId]);
+  }, [seriesId]);
 
   useEffect(() => {
-    fetchSeason();
-  }, [fetchSeason]);
+    fetchSeries();
+  }, [fetchSeries]);
 
   const handlePlay = useCallback(async (episode: Episode) => {
     if (!episode.filePath) {
@@ -94,14 +93,10 @@ export default function SeasonDetailPage() {
     }
   }, []);
 
-  const posterUrl = season ? tmdbImageUrl(season.posterPath, "w780") : null;
-  const subtitle = useMemo(() => {
-    if (!season) return "";
-    if (season.seasonNumber) {
-      return `Season ${season.seasonNumber}`;
-    }
-    return "Season";
-  }, [season]);
+  const seasonSummary = useMemo(() => {
+    if (!series) return "";
+    return `${series.seasonCount} ${series.seasonCount === 1 ? "season" : "seasons"}`;
+  }, [series]);
 
   return (
     <div className="min-h-screen">
@@ -116,11 +111,14 @@ export default function SeasonDetailPage() {
           </Link>
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-faint 2xl:text-sm">
-              Season details
+              Series
             </p>
             <h1 className="font-serif text-2xl font-bold tracking-tight text-foreground 2xl:text-4xl">
-              {season?.titleClean ?? "Loading..."}
+              {series?.titleClean ?? "Loading..."}
             </h1>
+            {series ? (
+              <p className="mt-1 text-xs text-muted 2xl:text-sm">{seasonSummary}</p>
+            ) : null}
           </div>
         </div>
       </header>
@@ -131,17 +129,17 @@ export default function SeasonDetailPage() {
         {loading ? (
           <div className="flex items-center justify-center gap-3 rounded-2xl border border-border bg-surface p-10 text-sm text-muted 2xl:text-base">
             <Loader2 className="h-5 w-5 animate-spin text-accent" />
-            Loading season...
+            Loading series...
           </div>
         ) : null}
 
-        {!loading && !season ? (
+        {!loading && !series ? (
           <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-surface p-12 text-center 2xl:p-16">
             <p className="font-serif text-lg font-medium text-foreground 2xl:text-xl">
-              Season not found
+              Series not found
             </p>
             <p className="text-sm text-muted 2xl:text-base">
-              The season you are looking for could not be loaded.
+              The series you are looking for could not be loaded.
             </p>
             <Link
               href="/"
@@ -152,96 +150,89 @@ export default function SeasonDetailPage() {
           </div>
         ) : null}
 
-        {!loading && season ? (
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
-            <div className="flex flex-col gap-4">
-              <div className="relative aspect-[2/3] w-full overflow-hidden rounded-2xl border border-border bg-surface">
-                {posterUrl ? (
-                  <Image
-                    src={posterUrl}
-                    alt={season.titleClean}
-                    fill
-                    sizes="(max-width: 1024px) 80vw, 40vw"
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-faint">
-                    <Video className="h-10 w-10" />
-                    <span className="text-xs uppercase tracking-[0.2em]">
-                      No Poster
-                    </span>
-                  </div>
-                )}
-              </div>
+        {!loading && series ? (
+          <div className="flex flex-col gap-4">
+            {seasons.map((season) => {
+              const seasonLabel = season.seasonNumber
+                ? `Season ${season.seasonNumber}`
+                : "Season";
+              const episodeCount = season.episodeCount ?? season.episodes.length;
+              return (
+                <details
+                  key={season.id}
+                  className="group rounded-2xl border border-border bg-surface"
+                >
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4">
+                    <div className="min-w-0">
+                      <p className="font-serif text-lg font-semibold text-foreground">
+                        {seasonLabel}
+                      </p>
+                      <p className="text-xs text-muted 2xl:text-sm">
+                        {season.titleClean}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted 2xl:text-sm">
+                      <span>{episodeCount} ep</span>
+                      <span>{formatRating(season.tmdbRating)}</span>
+                      <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                    </div>
+                  </summary>
 
-              <div className="rounded-2xl border border-border bg-surface p-4 text-sm text-muted 2xl:text-base">
-                <p className="font-medium text-foreground">{subtitle}</p>
-                <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-muted 2xl:text-sm">
-                  <div className="rounded-xl border border-border bg-background/40 p-3">
-                    <p className="text-faint">Episodes</p>
-                    <p className="mt-1 text-sm text-foreground">
-                      {episodes.length}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3">
-                    <p className="text-faint">Rating</p>
-                    <p className="mt-1 text-sm text-foreground">
-                      {formatRating(season.tmdbRating)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-4">
-              <div className="rounded-2xl border border-border bg-surface p-6">
-                <h2 className="font-serif text-xl font-semibold text-foreground 2xl:text-2xl">
-                  Episodes
-                </h2>
-                {episodes.length === 0 ? (
-                  <p className="mt-4 text-sm text-muted 2xl:text-base">
-                    No episodes found for this season.
-                  </p>
-                ) : (
-                  <div className="mt-4 overflow-hidden rounded-xl border border-border">
-                    <table className="w-full text-sm text-muted 2xl:text-base">
-                      <thead className="bg-background/50 text-xs uppercase tracking-[0.2em] text-faint">
-                        <tr>
-                          <th className="px-4 py-3 text-left">Episode</th>
-                          <th className="px-4 py-3 text-left">Title</th>
-                          <th className="px-4 py-3 text-right">Play</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {episodes.map((episode) => (
-                          <tr
-                            key={episode.id}
-                            className="border-t border-border"
-                          >
-                            <td className="px-4 py-3 text-foreground">
-                              {episode.episodeNumber ?? "\u2014"}
-                            </td>
-                            <td className="px-4 py-3 text-foreground">
-                              {episode.titleClean || episode.titleRaw}
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <button
-                                onClick={() => handlePlay(episode)}
-                                disabled={playing === episode.id}
-                                className="inline-flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-background transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60 2xl:text-sm"
+                  <div className="border-t border-border px-5 py-4">
+                    <div className="flex justify-end">
+                      <Link
+                        href={`/seasons/${season.id}`}
+                        className="text-xs font-semibold text-accent hover:text-accent-hover 2xl:text-sm"
+                      >
+                        Edit season
+                      </Link>
+                    </div>
+                    {season.episodes.length === 0 ? (
+                      <p className="mt-4 text-sm text-muted 2xl:text-base">
+                        No episodes found for this season.
+                      </p>
+                    ) : (
+                      <div className="mt-4 overflow-hidden rounded-xl border border-border">
+                        <table className="w-full text-sm text-muted 2xl:text-base">
+                          <thead className="bg-background/50 text-xs uppercase tracking-[0.2em] text-faint">
+                            <tr>
+                              <th className="px-4 py-3 text-left">Episode</th>
+                              <th className="px-4 py-3 text-left">Title</th>
+                              <th className="px-4 py-3 text-right">Play</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {season.episodes.map((episode) => (
+                              <tr
+                                key={episode.id}
+                                className="border-t border-border"
                               >
-                                <Play className="h-3.5 w-3.5 2xl:h-4 2xl:w-4" />
-                                {playing === episode.id ? "Launching..." : "Play"}
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                                <td className="px-4 py-3 text-foreground">
+                                  {episode.episodeNumber ?? "\u2014"}
+                                </td>
+                                <td className="px-4 py-3 text-foreground">
+                                  {episode.titleClean || episode.titleRaw}
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  <button
+                                    onClick={() => handlePlay(episode)}
+                                    disabled={playing === episode.id}
+                                    className="inline-flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-background transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60 2xl:text-sm"
+                                  >
+                                    <Play className="h-3.5 w-3.5 2xl:h-4 2xl:w-4" />
+                                    {playing === episode.id ? "Launching..." : "Play"}
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </div>
+                </details>
+              );
+            })}
           </div>
         ) : null}
       </main>

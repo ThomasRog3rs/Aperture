@@ -1,14 +1,16 @@
 "use client";
 
 import { motion } from "framer-motion";
-import type { Movie, Season } from "@/lib/types";
+import type { Movie, Season, Series } from "@/lib/types";
 import { MovieCard } from "@/components/MovieCard";
 import { SeasonCard } from "@/components/SeasonCard";
+import { SeriesCard } from "@/components/SeriesCard";
 
 type MovieGridProps = {
   items: Array<
     | { type: "movie"; movie: Movie }
     | { type: "season"; season: Season }
+    | { type: "series"; series: Series }
   >;
   onPlayMovie: (movie: Movie) => void;
   onRateMovie: (id: string, rating: number | null) => void;
@@ -53,7 +55,13 @@ export function MovieGrid({
     >
       {items.map((entry) => (
         <motion.div
-          key={entry.type === "movie" ? entry.movie.id : entry.season.id}
+          key={
+            entry.type === "movie"
+              ? entry.movie.id
+              : entry.type === "series"
+                ? entry.series.id
+                : entry.season.id
+          }
           variants={item}
         >
           {entry.type === "movie" ? (
@@ -64,6 +72,8 @@ export function MovieGrid({
               onWatched={onWatchedMovie}
               blurIfXxxRated={blurXxxRated}
             />
+          ) : entry.type === "series" ? (
+            <SeriesCard series={entry.series} blurIfXxxRated={blurXxxRated} />
           ) : (
             <SeasonCard season={entry.season} blurIfXxxRated={blurXxxRated} />
           )}

@@ -6,7 +6,7 @@ import { MovieGrid } from "@/components/MovieGrid";
 import { StatusBanner } from "@/components/StatusBanner";
 import { TopBar } from "@/components/TopBar";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import type { Movie, Season } from "@/lib/types";
+import type { Movie, Series } from "@/lib/types";
 
 type SyncSummary = {
   scanned: number;
@@ -25,7 +25,7 @@ type FilterOptionsResponse = {
 
 export function LibraryView() {
   const [movies, setMovies] = useState<Movie[]>([]);
-  const [seasons, setSeasons] = useState<Season[]>([]);
+  const [series, setSeries] = useState<Series[]>([]);
   const [query, setQuery] = useState("");
   const [genre, setGenre] = useState("All");
   const [minRating, setMinRating] = useState<number | null>(null);
@@ -65,14 +65,14 @@ export function LibraryView() {
     if (watched !== "all") params.set("watched", watched);
     params.set("sort", sort);
 
-    const [moviesResponse, seasonsResponse] = await Promise.all([
+    const [moviesResponse, seriesResponse] = await Promise.all([
       fetch(`/api/movies?${params.toString()}`),
-      fetch(`/api/seasons?${params.toString()}`),
+      fetch(`/api/series?${params.toString()}`),
     ]);
     const moviesData = (await moviesResponse.json()) as { movies: Movie[] };
-    const seasonsData = (await seasonsResponse.json()) as { seasons: Season[] };
+    const seriesData = (await seriesResponse.json()) as { series: Series[] };
     setMovies(moviesData.movies ?? []);
-    setSeasons(seasonsData.seasons ?? []);
+    setSeries(seriesData.series ?? []);
     setLoading(false);
   }, [debouncedQuery, genre, minRating, watched, sort]);
 
@@ -96,12 +96,14 @@ export function LibraryView() {
   }, [fetchLibrary]);
 
   const lastSyncedAt = useMemo(() => {
-    const timestamps = [...movies, ...seasons]
-      .map((entry) => entry.lastSyncedAt)
+    const seasonTimestamps = series.flatMap((entry) =>
+      entry.seasons.map((season) => season.lastSyncedAt)
+    );
+    const timestamps = [...movies.map((entry) => entry.lastSyncedAt), ...seasonTimestamps]
       .filter((value) => typeof value === "number");
     if (timestamps.length === 0) return null;
     return Math.max(...timestamps);
-  }, [movies, seasons]);
+  }, [movies, series]);
 
   const handleSync = useCallback(async () => {
     setSyncing(true);
@@ -220,20 +222,33 @@ export function LibraryView() {
   const items = useMemo(() => {
     const merged: Array<
       | { type: "movie"; movie: Movie }
-      | { type: "season"; season: Season }
+      | { type: "series"; series: Series }
     > = [
       ...movies.map((movie) => ({ type: "movie" as const, movie })),
-      ...seasons.map((season) => ({ type: "season" as const, season })),
+      ...series.map((entry) => ({ type: "series" as const, series: entry })),
     ];
 
     const getTitle = (entry: (typeof merged)[number]) =>
-      entry.type === "movie" ? entry.movie.titleClean : entry.season.titleClean;
+      entry.type === "movie" ? entry.movie.titleClean : entry.series.titleClean;
+    const getSeriesRating = (entry: Series) => {
+      const ratings = entry.seasons
+        .map((season) => season.tmdbRating)
+        .filter((value): value is number => typeof value === "number");
+      if (ratings.length === 0) return null;
+      return Math.max(...ratings);
+    };
     const getRating = (entry: (typeof merged)[number]) =>
-      entry.type === "movie" ? entry.movie.tmdbRating : entry.season.tmdbRating;
+      entry.type === "movie"
+        ? entry.movie.tmdbRating
+        : getSeriesRating(entry.series);
+    const getSeriesSyncedAt = (entry: Series) => {
+      if (entry.seasons.length === 0) return 0;
+      return Math.max(...entry.seasons.map((season) => season.lastSyncedAt));
+    };
     const getSyncedAt = (entry: (typeof merged)[number]) =>
       entry.type === "movie"
         ? entry.movie.lastSyncedAt
-        : entry.season.lastSyncedAt;
+        : getSeriesSyncedAt(entry.series);
 
     merged.sort((a, b) => {
       if (sort === "rating") {
@@ -252,7 +267,7 @@ export function LibraryView() {
     });
 
     return merged;
-  }, [movies, seasons, sort]);
+  }, [movies, series, sort]);
 
   return (
     <div className="min-h-screen">
@@ -309,7 +324,7 @@ export function LibraryView() {
         {!loading &&
         libraryRootPath &&
         movies.length === 0 &&
-        seasons.length === 0 ? (
+        series.length === 0 ? (
           <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-surface p-12 text-center 2xl:p-16">
             <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-accent-muted text-accent 2xl:h-16 2xl:w-16">
               <Clapperboard className="h-7 w-7 2xl:h-8 2xl:w-8" />
@@ -329,7 +344,7 @@ export function LibraryView() {
         {items.length > 0 ? (
           <MovieGrid
             key={items.map((entry) =>
-              entry.type === "movie" ? entry.movie.id : entry.season.id
+              entry.type === "movie" ? entry.movie.id : entry.series.id
             ).join(",")}
             items={items}
             onPlayMovie={handlePlay}

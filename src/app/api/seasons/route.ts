@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getEpisodeCountsBySeasonIds, listSeasons } from "@/lib/storage";
+import { getSeriesId } from "@/lib/series";
 
 export const runtime = "nodejs";
 
@@ -57,6 +58,7 @@ export async function GET(request: Request) {
     const genres = mergeGenres(omdbGenres, userGenres);
     return {
       ...rest,
+      seriesId: getSeriesId(rest.seriesFolderPath),
       genres,
       omdbGenres,
       userGenres,
