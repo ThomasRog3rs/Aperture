@@ -30,6 +30,7 @@ export function LibraryView() {
   const [genre, setGenre] = useState("All");
   const [minRating, setMinRating] = useState<number | null>(null);
   const [watched, setWatched] = useState<"all" | "watched" | "unwatched">("all");
+  const [mediaType, setMediaType] = useState<"all" | "movies" | "series">("all");
   const [sort, setSort] = useState<"title" | "rating" | "recent">("rating");
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -237,7 +238,16 @@ export function LibraryView() {
         ? entry.movie.lastSyncedAt
         : getSeriesSyncedAt(entry.series);
 
-    merged.sort((a, b) => {
+    const filtered =
+      mediaType === "all"
+        ? merged
+        : merged.filter((entry) =>
+            mediaType === "movies"
+              ? entry.type === "movie"
+              : entry.type === "series"
+          );
+
+    filtered.sort((a, b) => {
       if (sort === "rating") {
         const aRating = getRating(a);
         const bRating = getRating(b);
@@ -253,8 +263,8 @@ export function LibraryView() {
       return getTitle(a).localeCompare(getTitle(b));
     });
 
-    return merged;
-  }, [movies, series, sort]);
+    return filtered;
+  }, [movies, series, mediaType, sort]);
 
   return (
     <div className="min-h-screen">
@@ -268,6 +278,8 @@ export function LibraryView() {
         onMinRatingChange={setMinRating}
         watched={watched}
         onWatchedChange={setWatched}
+        mediaType={mediaType}
+        onMediaTypeChange={setMediaType}
         sort={sort}
         onSortChange={setSort}
         onSync={handleSync}

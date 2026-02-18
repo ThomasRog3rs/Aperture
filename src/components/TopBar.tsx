@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Search, Aperture, RefreshCw } from "lucide-react";
 
 type WatchedFilter = "all" | "watched" | "unwatched";
+type MediaTypeFilter = "all" | "movies" | "series";
 
 type TopBarProps = {
   query: string;
@@ -15,6 +16,8 @@ type TopBarProps = {
   onMinRatingChange: (value: number | null) => void;
   watched: WatchedFilter;
   onWatchedChange: (value: WatchedFilter) => void;
+  mediaType: MediaTypeFilter;
+  onMediaTypeChange: (value: MediaTypeFilter) => void;
   sort: "title" | "rating" | "recent";
   onSortChange: (value: "title" | "rating" | "recent") => void;
   onSync: () => void;
@@ -33,6 +36,8 @@ export function TopBar({
   onMinRatingChange,
   watched,
   onWatchedChange,
+  mediaType,
+  onMediaTypeChange,
   sort,
   onSortChange,
   onSync,
@@ -131,6 +136,18 @@ export function TopBar({
               <option value="all">All</option>
               <option value="watched">Watched</option>
               <option value="unwatched">Unwatched</option>
+            </select>
+
+            <select
+              value={mediaType}
+              onChange={(event) =>
+                onMediaTypeChange(event.target.value as MediaTypeFilter)
+              }
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-foreground transition-colors hover:border-border-hover 2xl:py-2 2xl:text-base"
+            >
+              <option value="all">All media</option>
+              <option value="movies">Movies</option>
+              <option value="series">TV Shows</option>
             </select>
 
             <select
