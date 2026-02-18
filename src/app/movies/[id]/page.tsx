@@ -802,14 +802,6 @@ export default function MovieDetailPage() {
                   </div>
                   <div className="rounded-xl border border-border bg-background/40 p-3">
                     <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      personalRating
-                    </dt>
-                    <dd className="mt-1 text-foreground">
-                      {movie.personalRating ?? "\u2014"}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
                       titleEditedAt
                     </dt>
                     <dd className="mt-1 text-foreground">

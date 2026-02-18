@@ -28,13 +28,13 @@ export function SeriesCard({ series, blurIfXxxRated = false }: SeriesCardProps) 
     <motion.div
       whileHover={{ scale: 1.03, y: -4 }}
       transition={{ type: "spring", stiffness: 300, damping: 24 }}
-      className="group relative flex flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.4)] transition-shadow duration-300 hover:shadow-[0_16px_48px_rgba(212,168,83,0.08)]"
+      className="group relative flex h-full flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.4)] transition-shadow duration-300 hover:shadow-[0_16px_48px_rgba(212,168,83,0.08)]"
     >
-      <div className={shouldBlur ? "blur-xl select-none" : ""}>
+      <div className={`flex min-h-0 flex-1 flex-col ${shouldBlur ? "blur-xl select-none" : ""}`}>
         <Link
           href={`/series/${series.id}`}
           aria-label={`Open series details for ${series.titleClean}`}
-          className="relative block aspect-[2/3] w-full overflow-hidden bg-background"
+          className="relative block aspect-[2/3] w-full shrink-0 overflow-hidden bg-background"
         >
           {posterUrl ? (
             <Image
@@ -55,7 +55,7 @@ export function SeriesCard({ series, blurIfXxxRated = false }: SeriesCardProps) 
           <div className="absolute inset-0 bg-gradient-to-t from-[#0d0c0a] via-[#0d0c0a]/20 to-transparent opacity-85" />
         </Link>
 
-        <div className="flex flex-1 flex-col gap-3 p-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
           <Link
             href={`/series/${series.id}`}
             className="block min-w-0"

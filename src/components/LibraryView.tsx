@@ -184,19 +184,6 @@ export function LibraryView() {
     }
   }, []);
 
-  const handleRate = useCallback(async (id: string, rating: number | null) => {
-    await fetch("/api/rating", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, personalRating: rating }),
-    });
-    setMovies((prev) =>
-      prev.map((movie) =>
-        movie.id === id ? { ...movie, personalRating: rating } : movie
-      )
-    );
-  }, []);
-
   const handleWatched = useCallback(async (id: string, watchedValue: boolean) => {
     try {
       const response = await fetch(`/api/movies/${id}`, {
@@ -348,7 +335,6 @@ export function LibraryView() {
             ).join(",")}
             items={items}
             onPlayMovie={handlePlay}
-            onRateMovie={handleRate}
             onWatchedMovie={handleWatched}
             blurXxxRated={true}
           />

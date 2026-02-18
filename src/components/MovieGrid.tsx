@@ -13,7 +13,6 @@ type MovieGridProps = {
     | { type: "series"; series: Series }
   >;
   onPlayMovie: (movie: Movie) => void;
-  onRateMovie: (id: string, rating: number | null) => void;
   onWatchedMovie?: (id: string, watched: boolean) => void;
   /** When true, blur cards marked as XXX rated (main browse only; unblurred when searching/filtering). */
   blurXxxRated?: boolean;
@@ -42,7 +41,6 @@ const item = {
 export function MovieGrid({
   items,
   onPlayMovie,
-  onRateMovie,
   onWatchedMovie,
   blurXxxRated = false,
 }: MovieGridProps) {
@@ -68,7 +66,6 @@ export function MovieGrid({
             <MovieCard
               movie={entry.movie}
               onPlay={onPlayMovie}
-              onRate={onRateMovie}
               onWatched={onWatchedMovie}
               blurIfXxxRated={blurXxxRated}
             />

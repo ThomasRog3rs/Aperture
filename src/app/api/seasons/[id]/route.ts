@@ -51,8 +51,9 @@ function mapRowToSeason(row: ReturnType<typeof getSeasonById>): Season | null {
 }
 
 function mapEpisodes(rows: ReturnType<typeof getEpisodesBySeasonId>): Episode[] {
-  return rows.map((row) => ({
-    ...row,
+  return rows.map(({ watched, ...rest }) => ({
+    ...rest,
+    watched: Boolean(watched),
   }));
 }
 

@@ -97,7 +97,8 @@ function ensureSchema(db: DbInstance) {
       titleClean TEXT NOT NULL,
       filePath TEXT NOT NULL,
       fileSizeBytes INTEGER NOT NULL,
-      lastSyncedAt INTEGER NOT NULL
+      lastSyncedAt INTEGER NOT NULL,
+      watched INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE INDEX IF NOT EXISTS idx_seasons_tmdb_id ON seasons (tmdbId);
@@ -123,10 +124,19 @@ function ensureSchema(db: DbInstance) {
   if (!columnNames.has("watched")) {
     db.exec("ALTER TABLE movies ADD COLUMN watched INTEGER NOT NULL DEFAULT 0");
   }
+
+  const episodeCols = db
+    .prepare("PRAGMA table_info(episodes)")
+    .all() as Array<{ name: string }>;
+  const episodeColNames = new Set(episodeCols.map((c) => c.name));
+  if (!episodeColNames.has("watched")) {
+    db.exec("ALTER TABLE episodes ADD COLUMN watched INTEGER NOT NULL DEFAULT 0");
+  }
 }
 
 export function getDb(): DbInstance {
   if (globalForDb.__apertureDb) {
+    ensureSchema(globalForDb.__apertureDb);
     return globalForDb.__apertureDb;
   }
 
