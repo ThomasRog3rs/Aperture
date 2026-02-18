@@ -53,7 +53,7 @@ export async function GET(
     })
     .map((name) => ({
       name,
-      url: `/api/series/${id}/folder-image?name=${encodeURIComponent(name)}`,
+      url: `/api/seasons/${id}/folder-image?name=${encodeURIComponent(name)}`,
     }));
 
   return NextResponse.json({ images });

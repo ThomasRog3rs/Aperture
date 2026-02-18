@@ -36,6 +36,7 @@ export type Movie = {
 export type Season = {
   id: string;
   seriesFolderPath: string;
+  seriesId?: string;
   seasonFolderPath: string;
   seasonNumber: number | null;
   titleRaw: string;
@@ -57,6 +58,14 @@ export type Season = {
   episodeCount?: number;
 };
 
+export type Series = {
+  id: string;
+  titleClean: string;
+  seasonCount: number;
+  posterPath: string | null;
+  seasons: Season[];
+};
+
 export type Episode = {
   id: string;
   seasonId: string;
@@ -67,4 +76,6 @@ export type Episode = {
   fileSizeBytes: number;
   lastSyncedAt: number;
 };
+
+export type SeasonWithEpisodes = Season & { episodes: Episode[] };
 

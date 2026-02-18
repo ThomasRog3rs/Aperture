@@ -41,6 +41,23 @@ export type ScannedSeason = {
   errorMessage: string | null;
 };
 
+function dedupeEpisodes(episodes: ScannedEpisode[]) {
+  const bestByNumber = new Map<number, ScannedEpisode>();
+  for (const episode of episodes) {
+    if (episode.episodeNumber === null) continue;
+    const existing = bestByNumber.get(episode.episodeNumber);
+    if (!existing || episode.fileSizeBytes > existing.fileSizeBytes) {
+      bestByNumber.set(episode.episodeNumber, episode);
+    }
+  }
+  return Array.from(bestByNumber.values()).sort((a, b) => {
+    if (a.episodeNumber === null && b.episodeNumber !== null) return 1;
+    if (a.episodeNumber !== null && b.episodeNumber === null) return -1;
+    if (a.episodeNumber === null || b.episodeNumber === null) return 0;
+    return a.episodeNumber - b.episodeNumber;
+  });
+}
+
 async function findLargestVideoFile(
   folderPath: string
 ): Promise<{ filePath: string; size: number } | null> {
@@ -152,14 +169,16 @@ export async function scanLibrary(
           })
           .filter(Boolean) as ScannedEpisode[];
 
+        const dedupedEpisodes = dedupeEpisodes(parsedEpisodes);
+
         seasons.push({
           seasonFolderPath: season.seasonFolderPath,
           seriesFolderPath: folderPath,
           seasonNumber: season.seasonNumber,
           titleRaw: season.folderName,
-          episodes: parsedEpisodes,
+          episodes: dedupedEpisodes,
           errorMessage:
-            parsedEpisodes.length === 0
+            dedupedEpisodes.length === 0
               ? "No parseable episodes found in season."
               : null,
         });

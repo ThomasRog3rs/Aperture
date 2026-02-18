@@ -365,6 +365,33 @@ export function listSeasons(query: SeasonQuery): SeasonRow[] {
   return db.prepare(sql).all(params) as SeasonRow[];
 }
 
+export function listSeasonsBySeriesFolderPath(
+  seriesFolderPath: string
+): SeasonRow[] {
+  const db = getDb();
+  return db
+    .prepare(
+      `
+      SELECT *
+      FROM seasons
+      WHERE seriesFolderPath = ?
+      ORDER BY
+        CASE WHEN seasonNumber IS NULL THEN 1 ELSE 0 END,
+        seasonNumber ASC,
+        titleClean ASC
+      `
+    )
+    .all(seriesFolderPath) as SeasonRow[];
+}
+
+export function listSeriesFolderPaths(): string[] {
+  const db = getDb();
+  const rows = db
+    .prepare("SELECT DISTINCT seriesFolderPath FROM seasons")
+    .all() as Array<{ seriesFolderPath: string }>;
+  return rows.map((row) => row.seriesFolderPath);
+}
+
 export function listGenres(): string[] {
   const db = getDb();
   const rows = db
