@@ -74,6 +74,21 @@ function ensureSchema(db: DbInstance) {
       watched INTEGER NOT NULL DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS series (
+      id TEXT PRIMARY KEY,
+      seriesFolderPath TEXT NOT NULL UNIQUE,
+      titleClean TEXT NOT NULL,
+      titleEditedAt INTEGER NULL,
+      year INTEGER NULL,
+      tmdbId INTEGER NULL,
+      posterPath TEXT NULL,
+      tmdbRating REAL NULL,
+      genresJson TEXT NOT NULL DEFAULT '[]',
+      userGenresJson TEXT NOT NULL DEFAULT '[]',
+      errorMessage TEXT NULL,
+      lastSyncedAt INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS episodes (
       id TEXT PRIMARY KEY,
       seasonId TEXT NOT NULL,
@@ -87,6 +102,8 @@ function ensureSchema(db: DbInstance) {
 
     CREATE INDEX IF NOT EXISTS idx_seasons_tmdb_id ON seasons (tmdbId);
     CREATE INDEX IF NOT EXISTS idx_seasons_title_clean ON seasons (titleClean);
+    CREATE INDEX IF NOT EXISTS idx_series_title_clean ON series (titleClean);
+    CREATE INDEX IF NOT EXISTS idx_series_folder_path ON series (seriesFolderPath);
     CREATE INDEX IF NOT EXISTS idx_episodes_season_id ON episodes (seasonId);
   `);
 
