@@ -8,6 +8,15 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { formatRating, tmdbImageUrl } from "@/lib/format";
 import type { Season } from "@/lib/types";
 
+function formatPeopleLabel(people: string[], singular: string, plural: string) {
+  if (people.length === 0) return null;
+  const shown = people.slice(0, 2);
+  const suffix =
+    people.length > shown.length ? ` +${people.length - shown.length}` : "";
+  const label = people.length === 1 ? singular : plural;
+  return `${label}: ${shown.join(", ")}${suffix}`;
+}
+
 type SeasonCardProps = {
   season: Season;
   /** When true, blur the card if season is XXX rated (e.g. on main browse). */
@@ -21,6 +30,11 @@ export function SeasonCard({ season, blurIfXxxRated = false }: SeasonCardProps) 
   const shouldBlur = blurIfXxxRated && season.xxxRated;
   const episodeCount = season.episodeCount ?? null;
   const seriesTarget = season.seriesId ?? season.id;
+  const directorLabel = formatPeopleLabel(
+    season.directors ?? [],
+    "Director",
+    "Directors"
+  );
 
   return (
     <motion.div
@@ -66,6 +80,11 @@ export function SeasonCard({ season, blurIfXxxRated = false }: SeasonCardProps) 
               {season.seasonNumber ? `Season ${season.seasonNumber}` : "Season"}
               {season.year ? ` · ${season.year}` : ""}
             </p>
+            {directorLabel ? (
+              <p className="mt-1 text-xs text-faint 2xl:text-sm">
+                {directorLabel}
+              </p>
+            ) : null}
           </Link>
 
           <div className="flex items-center gap-1.5">

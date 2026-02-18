@@ -40,6 +40,9 @@ function ensureSchema(db: DbInstance) {
       tmdbRating REAL NULL,
       genresJson TEXT NOT NULL DEFAULT '[]',
       userGenresJson TEXT NOT NULL DEFAULT '[]',
+      directorsJson TEXT NOT NULL DEFAULT '[]',
+      writersJson TEXT NOT NULL DEFAULT '[]',
+      actorsJson TEXT NOT NULL DEFAULT '[]',
       youtubeTrailerKey TEXT NULL,
       personalRating INTEGER NULL,
       errorMessage TEXT NULL,
@@ -67,6 +70,9 @@ function ensureSchema(db: DbInstance) {
       tmdbRating REAL NULL,
       genresJson TEXT NOT NULL DEFAULT '[]',
       userGenresJson TEXT NOT NULL DEFAULT '[]',
+      directorsJson TEXT NOT NULL DEFAULT '[]',
+      writersJson TEXT NOT NULL DEFAULT '[]',
+      actorsJson TEXT NOT NULL DEFAULT '[]',
       personalRating INTEGER NULL,
       errorMessage TEXT NULL,
       lastSyncedAt INTEGER NOT NULL,
@@ -85,6 +91,9 @@ function ensureSchema(db: DbInstance) {
       tmdbRating REAL NULL,
       genresJson TEXT NOT NULL DEFAULT '[]',
       userGenresJson TEXT NOT NULL DEFAULT '[]',
+      directorsJson TEXT NOT NULL DEFAULT '[]',
+      writersJson TEXT NOT NULL DEFAULT '[]',
+      actorsJson TEXT NOT NULL DEFAULT '[]',
       errorMessage TEXT NULL,
       lastSyncedAt INTEGER NOT NULL
     );
@@ -118,11 +127,48 @@ function ensureSchema(db: DbInstance) {
   if (!columnNames.has("userGenresJson")) {
     db.exec("ALTER TABLE movies ADD COLUMN userGenresJson TEXT NOT NULL DEFAULT '[]'");
   }
+  if (!columnNames.has("directorsJson")) {
+    db.exec("ALTER TABLE movies ADD COLUMN directorsJson TEXT NOT NULL DEFAULT '[]'");
+  }
+  if (!columnNames.has("writersJson")) {
+    db.exec("ALTER TABLE movies ADD COLUMN writersJson TEXT NOT NULL DEFAULT '[]'");
+  }
+  if (!columnNames.has("actorsJson")) {
+    db.exec("ALTER TABLE movies ADD COLUMN actorsJson TEXT NOT NULL DEFAULT '[]'");
+  }
   if (!columnNames.has("xxxRated")) {
     db.exec("ALTER TABLE movies ADD COLUMN xxxRated INTEGER NOT NULL DEFAULT 0");
   }
   if (!columnNames.has("watched")) {
     db.exec("ALTER TABLE movies ADD COLUMN watched INTEGER NOT NULL DEFAULT 0");
+  }
+
+  const seasonCols = db
+    .prepare("PRAGMA table_info(seasons)")
+    .all() as Array<{ name: string }>;
+  const seasonColNames = new Set(seasonCols.map((column) => column.name));
+  if (!seasonColNames.has("directorsJson")) {
+    db.exec("ALTER TABLE seasons ADD COLUMN directorsJson TEXT NOT NULL DEFAULT '[]'");
+  }
+  if (!seasonColNames.has("writersJson")) {
+    db.exec("ALTER TABLE seasons ADD COLUMN writersJson TEXT NOT NULL DEFAULT '[]'");
+  }
+  if (!seasonColNames.has("actorsJson")) {
+    db.exec("ALTER TABLE seasons ADD COLUMN actorsJson TEXT NOT NULL DEFAULT '[]'");
+  }
+
+  const seriesCols = db
+    .prepare("PRAGMA table_info(series)")
+    .all() as Array<{ name: string }>;
+  const seriesColNames = new Set(seriesCols.map((column) => column.name));
+  if (!seriesColNames.has("directorsJson")) {
+    db.exec("ALTER TABLE series ADD COLUMN directorsJson TEXT NOT NULL DEFAULT '[]'");
+  }
+  if (!seriesColNames.has("writersJson")) {
+    db.exec("ALTER TABLE series ADD COLUMN writersJson TEXT NOT NULL DEFAULT '[]'");
+  }
+  if (!seriesColNames.has("actorsJson")) {
+    db.exec("ALTER TABLE series ADD COLUMN actorsJson TEXT NOT NULL DEFAULT '[]'");
   }
 
   const episodeCols = db

@@ -28,6 +28,16 @@ function parseGenres(genresJson: string | null) {
   }
 }
 
+function parsePeople(peopleJson: string | null) {
+  if (!peopleJson) return [];
+  try {
+    const parsed = JSON.parse(peopleJson) as string[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function POST() {
   const libraryRootPath = getSetting("libraryRootPath");
   if (!libraryRootPath) {
@@ -67,6 +77,14 @@ export async function POST() {
     const existing = getMovieById(id);
     const existingGenres = existing ? parseGenres(existing.genresJson) : [];
     const existingUserGenres = existing ? parseGenres(existing.userGenresJson) : [];
+    const existingDirectors = existing ? parsePeople(existing.directorsJson) : [];
+    const existingWriters = existing ? parsePeople(existing.writersJson) : [];
+    const existingActors = existing ? parsePeople(existing.actorsJson) : [];
+    const missingCrew =
+      !existing ||
+      existingDirectors.length === 0 ||
+      existingWriters.length === 0 ||
+      existingActors.length === 0;
     const { titleClean: derivedTitleClean, year } = cleanTitle(entry.titleRaw);
     const titleEditedAt = existing?.titleEditedAt ?? null;
     const titleClean = titleEditedAt
@@ -78,7 +96,7 @@ export async function POST() {
     let errorMessage = entry.errorMessage;
     let tmdbData = null;
 
-    if (!errorMessage) {
+    if (!errorMessage && missingCrew) {
       try {
         tmdbData = await resolveOmdbMovie(titleClean, year);
       } catch (error) {
@@ -95,6 +113,9 @@ export async function POST() {
         runtimeMinutes: existing.runtimeMinutes,
         tmdbRating: existing.tmdbRating,
         genres: existingGenres,
+        directors: existingDirectors,
+        writers: existingWriters,
+        actors: existingActors,
         youtubeTrailerKey: existing.youtubeTrailerKey,
       };
     }
@@ -129,6 +150,9 @@ export async function POST() {
       runtimeMinutes: tmdbData?.runtimeMinutes ?? null,
       tmdbRating: tmdbData?.tmdbRating ?? null,
       genres: tmdbData?.genres ?? [],
+      directors: tmdbData?.directors ?? [],
+      writers: tmdbData?.writers ?? [],
+      actors: tmdbData?.actors ?? [],
       userGenres: existingUserGenres,
       youtubeTrailerKey: tmdbData?.youtubeTrailerKey ?? null,
       personalRating: existing?.personalRating ?? null,
@@ -148,6 +172,14 @@ export async function POST() {
     const existing = getSeasonById(id);
     const existingGenres = existing ? parseGenres(existing.genresJson) : [];
     const existingUserGenres = existing ? parseGenres(existing.userGenresJson) : [];
+    const existingDirectors = existing ? parsePeople(existing.directorsJson) : [];
+    const existingWriters = existing ? parsePeople(existing.writersJson) : [];
+    const existingActors = existing ? parsePeople(existing.actorsJson) : [];
+    const missingCrew =
+      !existing ||
+      existingDirectors.length === 0 ||
+      existingWriters.length === 0 ||
+      existingActors.length === 0;
     const seriesTitleRaw = path.basename(season.seriesFolderPath);
     const { titleClean: seriesTitleClean, year } = cleanTitle(seriesTitleRaw);
     const derivedTitleClean = season.seasonNumber
@@ -163,7 +195,7 @@ export async function POST() {
     let errorMessage = season.errorMessage;
     let tmdbData = null;
 
-    if (!errorMessage) {
+    if (!errorMessage && missingCrew) {
       try {
         tmdbData = await resolveOmdbSeries(seriesTitleClean, year);
       } catch (error) {
@@ -180,6 +212,9 @@ export async function POST() {
         runtimeMinutes: null,
         tmdbRating: existing.tmdbRating,
         genres: existingGenres,
+        directors: existingDirectors,
+        writers: existingWriters,
+        actors: existingActors,
         youtubeTrailerKey: null,
       };
     }
@@ -213,6 +248,9 @@ export async function POST() {
       backdropPath: tmdbData?.backdropPath ?? null,
       tmdbRating: tmdbData?.tmdbRating ?? null,
       genres: tmdbData?.genres ?? [],
+      directors: tmdbData?.directors ?? [],
+      writers: tmdbData?.writers ?? [],
+      actors: tmdbData?.actors ?? [],
       userGenres: existingUserGenres,
       personalRating: existing?.personalRating ?? null,
       errorMessage,

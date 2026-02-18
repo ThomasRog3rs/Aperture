@@ -302,6 +302,26 @@ export default function SeriesDetailPage() {
     return Math.max(...ratings);
   }, [seasons]);
 
+  const castCrew = useMemo(() => {
+    const unique = (names: string[]) => {
+      const seen = new Map<string, string>();
+      names.forEach((name) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        const key = trimmed.toLowerCase();
+        if (seen.has(key)) return;
+        seen.set(key, trimmed);
+      });
+      return Array.from(seen.values());
+    };
+
+    return {
+      directors: unique(seasons.flatMap((season) => season.directors ?? [])),
+      writers: unique(seasons.flatMap((season) => season.writers ?? [])),
+      actors: unique(seasons.flatMap((season) => season.actors ?? [])),
+    };
+  }, [seasons]);
+
   const posterPreview = posterInput.trim().length > 0 ? posterInput.trim() : series?.posterPath ?? null;
   const posterUrl = tmdbImageUrl(posterPreview, "w780");
 
@@ -500,6 +520,48 @@ export default function SeriesDetailPage() {
                   </div>
                 </div>
               </div>
+
+              {(castCrew.directors.length > 0 ||
+                castCrew.writers.length > 0 ||
+                castCrew.actors.length > 0) && (
+                <div className="rounded-2xl border border-border bg-surface p-6 text-sm text-muted 2xl:text-base">
+                  <p className="font-serif text-lg font-medium text-foreground 2xl:text-xl">
+                    Cast & Crew
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    {castCrew.directors.length > 0 ? (
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-faint">
+                          Director
+                        </p>
+                        <p className="mt-1 text-foreground">
+                          {castCrew.directors.join(", ")}
+                        </p>
+                      </div>
+                    ) : null}
+                    {castCrew.writers.length > 0 ? (
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-faint">
+                          Writer
+                        </p>
+                        <p className="mt-1 text-foreground">
+                          {castCrew.writers.join(", ")}
+                        </p>
+                      </div>
+                    ) : null}
+                    {castCrew.actors.length > 0 ? (
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-faint">
+                          Cast
+                        </p>
+                        <p className="mt-1 text-foreground">
+                          {castCrew.actors.join(", ")}
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )}
 
               <div className="flex flex-col gap-4">
                 {seasons.map((season) => {

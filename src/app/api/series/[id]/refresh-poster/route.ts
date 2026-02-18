@@ -75,6 +75,9 @@ export async function POST(
       tmdbRating: null,
       genres: [],
       userGenres: [],
+      directors: [],
+      writers: [],
+      actors: [],
       errorMessage: null,
       lastSyncedAt: Date.now(),
     });
@@ -86,6 +89,9 @@ export async function POST(
     posterPath: omdbSeries.posterPath ?? undefined,
     tmdbRating: omdbSeries.tmdbRating ?? null,
     genresJson: JSON.stringify(omdbSeries.genres ?? []),
+    directorsJson: JSON.stringify(omdbSeries.directors ?? []),
+    writersJson: JSON.stringify(omdbSeries.writers ?? []),
+    actorsJson: JSON.stringify(omdbSeries.actors ?? []),
     errorMessage: null,
     lastSyncedAt: Date.now(),
   });

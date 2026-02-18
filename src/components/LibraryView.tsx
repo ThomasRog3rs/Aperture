@@ -21,6 +21,7 @@ type SettingsResponse = {
 
 type FilterOptionsResponse = {
   genres: string[];
+  people: string[];
 };
 
 export function LibraryView() {
@@ -28,6 +29,7 @@ export function LibraryView() {
   const [series, setSeries] = useState<Series[]>([]);
   const [query, setQuery] = useState("");
   const [genre, setGenre] = useState("All");
+  const [person, setPerson] = useState("");
   const [minRating, setMinRating] = useState<number | null>(null);
   const [watched, setWatched] = useState<"all" | "watched" | "unwatched">("all");
   const [mediaType, setMediaType] = useState<"all" | "movies" | "series">("all");
@@ -40,6 +42,7 @@ export function LibraryView() {
   } | null>(null);
   const [libraryRootPath, setLibraryRootPath] = useState<string | null>(null);
   const [availableGenres, setAvailableGenres] = useState<string[]>([]);
+  const [availablePeople, setAvailablePeople] = useState<string[]>([]);
 
   const debouncedQuery = useDebouncedValue(query, 350);
 
@@ -53,6 +56,7 @@ export function LibraryView() {
     const response = await fetch("/api/filter-options");
     const data = (await response.json()) as FilterOptionsResponse;
     setAvailableGenres(data.genres ?? []);
+    setAvailablePeople(data.people ?? []);
   }, []);
 
   const fetchLibrary = useCallback(async () => {
@@ -60,6 +64,7 @@ export function LibraryView() {
     const params = new URLSearchParams();
     if (debouncedQuery) params.set("q", debouncedQuery);
     if (genre && genre !== "All") params.set("genre", genre);
+    if (person.trim()) params.set("person", person.trim());
     if (minRating !== null) {
       params.set("minPersonalRating", String(minRating));
     }
@@ -75,7 +80,7 @@ export function LibraryView() {
     setMovies(moviesData.movies ?? []);
     setSeries(seriesData.series ?? []);
     setLoading(false);
-  }, [debouncedQuery, genre, minRating, watched, sort]);
+  }, [debouncedQuery, genre, person, minRating, watched, sort]);
 
   useEffect(() => {
     fetchSettings().catch(() => {
@@ -274,6 +279,9 @@ export function LibraryView() {
         genres={availableGenres}
         genre={genre}
         onGenreChange={setGenre}
+        people={availablePeople}
+        person={person}
+        onPersonChange={setPerson}
         minRating={minRating}
         onMinRatingChange={setMinRating}
         watched={watched}

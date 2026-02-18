@@ -8,6 +8,14 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { formatRating, formatRuntime, tmdbImageUrl } from "@/lib/format";
 import type { Movie } from "@/lib/types";
 
+function formatPeopleLabel(people: string[], singular: string, plural: string) {
+  if (people.length === 0) return null;
+  const shown = people.slice(0, 2);
+  const suffix = people.length > shown.length ? ` +${people.length - shown.length}` : "";
+  const label = people.length === 1 ? singular : plural;
+  return `${label}: ${shown.join(", ")}${suffix}`;
+}
+
 type MovieCardProps = {
   movie: Movie;
   onPlay: (movie: Movie) => void;
@@ -35,6 +43,11 @@ export function MovieCard({ movie, onPlay, onWatched, blurIfXxxRated = false }: 
       tmdbId: movie.tmdbId,
     });
   };
+  const directorLabel = formatPeopleLabel(
+    movie.directors ?? [],
+    "Director",
+    "Directors"
+  );
 
   return (
     <motion.div
@@ -83,6 +96,11 @@ export function MovieCard({ movie, onPlay, onWatched, blurIfXxxRated = false }: 
           <p className="mt-1 text-xs text-muted 2xl:text-sm">
             {movie.year ?? "\u2014"} · {formatRuntime(movie.runtimeMinutes)}
           </p>
+          {directorLabel ? (
+            <p className="mt-1 text-xs text-faint 2xl:text-sm">
+              {directorLabel}
+            </p>
+          ) : null}
         </Link>
         <div className="flex items-center gap-1.5">
             {onWatched ? (

@@ -15,6 +15,16 @@ function parseGenres(genresJson: string | null) {
   }
 }
 
+function parsePeople(peopleJson: string | null) {
+  if (!peopleJson) return [];
+  try {
+    const parsed = JSON.parse(peopleJson) as string[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function mergeGenres(omdbGenres: string[], userGenres: string[]) {
   const seen = new Set<string>();
   const merged: string[] = [];
@@ -31,14 +41,29 @@ function mergeGenres(omdbGenres: string[], userGenres: string[]) {
 
 function mapRowToMovie(row: ReturnType<typeof getMovieById>): Movie | null {
   if (!row) return null;
-  const { genresJson, userGenresJson, xxxRated, watched, ...rest } = row;
+  const {
+    genresJson,
+    userGenresJson,
+    directorsJson,
+    writersJson,
+    actorsJson,
+    xxxRated,
+    watched,
+    ...rest
+  } = row;
   const omdbGenres = parseGenres(genresJson);
   const userGenres = parseGenres(userGenresJson);
   const genres = mergeGenres(omdbGenres, userGenres);
+  const directors = parsePeople(directorsJson);
+  const writers = parsePeople(writersJson);
+  const actors = parsePeople(actorsJson);
   return {
     ...rest,
     genres,
     omdbGenres,
+    directors,
+    writers,
+    actors,
     userGenres,
     xxxRated: Boolean(xxxRated),
     watched: Boolean(watched),
@@ -85,6 +110,9 @@ export async function POST(
     runtimeMinutes: omdbMovie.runtimeMinutes ?? null,
     tmdbRating: omdbMovie.tmdbRating ?? null,
     genresJson: JSON.stringify(omdbMovie.genres ?? []),
+    directorsJson: JSON.stringify(omdbMovie.directors ?? []),
+    writersJson: JSON.stringify(omdbMovie.writers ?? []),
+    actorsJson: JSON.stringify(omdbMovie.actors ?? []),
     errorMessage: null,
     lastSyncedAt: Date.now(),
   };
