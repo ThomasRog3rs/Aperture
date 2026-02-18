@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Search, Aperture, RefreshCw } from "lucide-react";
+import { SearchableDropdown } from "./SearchableDropdown";
 
 type WatchedFilter = "all" | "watched" | "unwatched";
 type MediaTypeFilter = "all" | "movies" | "series";
@@ -12,6 +13,9 @@ type TopBarProps = {
   genres: string[];
   genre: string;
   onGenreChange: (value: string) => void;
+  people: string[];
+  person: string;
+  onPersonChange: (value: string) => void;
   minRating: number | null;
   onMinRatingChange: (value: number | null) => void;
   watched: WatchedFilter;
@@ -32,6 +36,9 @@ export function TopBar({
   genres,
   genre,
   onGenreChange,
+  people,
+  person,
+  onPersonChange,
   minRating,
   onMinRatingChange,
   watched,
@@ -108,6 +115,15 @@ export function TopBar({
                 </option>
               ))}
             </select>
+
+            <SearchableDropdown
+              options={people}
+              value={person}
+              onChange={onPersonChange}
+              placeholder="Search people..."
+              allLabel="All people"
+              className="min-w-[180px]"
+            />
 
             <select
               value={minRating ?? ""}

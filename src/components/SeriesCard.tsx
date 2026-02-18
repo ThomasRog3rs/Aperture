@@ -8,6 +8,15 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { tmdbImageUrl } from "@/lib/format";
 import type { Series } from "@/lib/types";
 
+function formatPeopleLabel(people: string[], singular: string, plural: string) {
+  if (people.length === 0) return null;
+  const shown = people.slice(0, 2);
+  const suffix =
+    people.length > shown.length ? ` +${people.length - shown.length}` : "";
+  const label = people.length === 1 ? singular : plural;
+  return `${label}: ${shown.join(", ")}${suffix}`;
+}
+
 type SeriesCardProps = {
   series: Series;
   /** When true, blur the card if any season is XXX rated (e.g. on main browse). */
@@ -23,6 +32,17 @@ export function SeriesCard({ series, blurIfXxxRated = false }: SeriesCardProps) 
   }`;
   const shouldBlur =
     blurIfXxxRated && series.seasons.some((season) => season.xxxRated);
+  const directorLabel = formatPeopleLabel(
+    Array.from(
+      new Map(
+        series.seasons
+          .flatMap((season) => season.directors ?? [])
+          .map((name) => [name.toLowerCase(), name])
+      ).values()
+    ),
+    "Director",
+    "Directors"
+  );
 
   return (
     <motion.div
@@ -65,6 +85,9 @@ export function SeriesCard({ series, blurIfXxxRated = false }: SeriesCardProps) 
               {series.titleClean}
             </h3>
           </Link>
+          {directorLabel ? (
+            <p className="text-xs text-faint 2xl:text-sm">{directorLabel}</p>
+          ) : null}
 
           <div className="flex items-center gap-1.5">
             <div className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-muted 2xl:px-3 2xl:py-2 2xl:text-sm">

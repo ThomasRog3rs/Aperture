@@ -625,6 +625,48 @@ export default function MovieDetailPage() {
                 </div>
               </div>
 
+              {((movie.directors ?? []).length > 0 ||
+                (movie.writers ?? []).length > 0 ||
+                (movie.actors ?? []).length > 0) && (
+                <div className="rounded-2xl border border-border bg-surface p-6 text-sm text-muted 2xl:text-base">
+                  <p className="font-serif text-lg font-medium text-foreground 2xl:text-xl">
+                    Cast & Crew
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    {movie.directors.length > 0 ? (
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-faint">
+                          Director
+                        </p>
+                        <p className="mt-1 text-foreground">
+                          {movie.directors.join(", ")}
+                        </p>
+                      </div>
+                    ) : null}
+                    {movie.writers.length > 0 ? (
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-faint">
+                          Writer
+                        </p>
+                        <p className="mt-1 text-foreground">
+                          {movie.writers.join(", ")}
+                        </p>
+                      </div>
+                    ) : null}
+                    {movie.actors.length > 0 ? (
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-faint">
+                          Cast
+                        </p>
+                        <p className="mt-1 text-foreground">
+                          {movie.actors.join(", ")}
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+
               <div className="rounded-2xl border border-border bg-surface p-6">
                 <div className="flex items-center gap-2">
                   <Tag className="h-4 w-4 text-accent" />

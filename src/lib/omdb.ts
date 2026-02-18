@@ -18,6 +18,9 @@ type OmdbDetailsResponse = {
   Year: string;
   Runtime: string;
   Genre: string;
+  Director: string;
+  Writer: string;
+  Actors: string;
   Poster: string;
   imdbRating: string;
   Response: "True" | "False";
@@ -66,6 +69,11 @@ function parseGenres(genres: string) {
   return genres.split(",").map((genre) => genre.trim()).filter(Boolean);
 }
 
+function parsePersonList(value: string) {
+  if (!value || value === "N/A") return [];
+  return value.split(",").map((person) => person.trim()).filter(Boolean);
+}
+
 function parsePosterUrl(poster: string) {
   if (!poster || poster === "N/A") return null;
   if (poster.startsWith("http://")) {
@@ -87,6 +95,9 @@ export type OmdbMovie = {
   runtimeMinutes: number | null;
   tmdbRating: number | null;
   genres: string[];
+  directors: string[];
+  writers: string[];
+  actors: string[];
   youtubeTrailerKey: string | null;
 };
 
@@ -122,6 +133,9 @@ async function resolveOmdbTitle(
     runtimeMinutes: parseRuntime(details.Runtime),
     tmdbRating: parseRating(details.imdbRating),
     genres: parseGenres(details.Genre),
+    directors: parsePersonList(details.Director),
+    writers: parsePersonList(details.Writer),
+    actors: parsePersonList(details.Actors),
     youtubeTrailerKey: null,
   };
 }

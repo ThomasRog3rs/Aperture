@@ -19,6 +19,16 @@ function parseGenres(genresJson: string | null) {
   }
 }
 
+function parsePeople(peopleJson: string | null) {
+  if (!peopleJson) return [];
+  try {
+    const parsed = JSON.parse(peopleJson) as string[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function mergeGenres(omdbGenres: string[], userGenres: string[]) {
   const seen = new Set<string>();
   const merged: string[] = [];
@@ -37,15 +47,30 @@ function mapRowToSeason(
   row: ReturnType<typeof listSeasons>[number],
   episodeCount: number
 ): Season {
-  const { genresJson, userGenresJson, xxxRated, watched, ...rest } = row;
+  const {
+    genresJson,
+    userGenresJson,
+    directorsJson,
+    writersJson,
+    actorsJson,
+    xxxRated,
+    watched,
+    ...rest
+  } = row;
   const omdbGenres = parseGenres(genresJson);
   const userGenres = parseGenres(userGenresJson);
   const genres = mergeGenres(omdbGenres, userGenres);
+  const directors = parsePeople(directorsJson);
+  const writers = parsePeople(writersJson);
+  const actors = parsePeople(actorsJson);
   return {
     ...rest,
     seriesId: getSeriesId(rest.seriesFolderPath),
     genres,
     omdbGenres,
+    directors,
+    writers,
+    actors,
     userGenres,
     xxxRated: Boolean(xxxRated),
     watched: Boolean(watched),
@@ -76,6 +101,8 @@ export async function GET(request: Request) {
   const genreParam = searchParams.get("genre")?.trim();
   const genre =
     genreParam && genreParam.toLowerCase() !== "all" ? genreParam : undefined;
+  const personParam = searchParams.get("person")?.trim();
+  const person = personParam ? personParam : undefined;
   const minRatingParam = searchParams.get("minPersonalRating");
   const minPersonalRating =
     minRatingParam && !Number.isNaN(Number(minRatingParam))
@@ -90,7 +117,7 @@ export async function GET(request: Request) {
       ? watchedParam
       : "all";
 
-  const rows = listSeasons({ q, genre, minPersonalRating, watched, sort });
+  const rows = listSeasons({ q, genre, person, minPersonalRating, watched, sort });
   const counts = getEpisodeCountsBySeasonIds(rows.map((row) => row.id));
   const seasons = rows.map((row) =>
     mapRowToSeason(row, counts.get(row.id) ?? 0)

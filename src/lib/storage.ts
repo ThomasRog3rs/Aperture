@@ -17,6 +17,9 @@ export type MovieUpsert = {
   tmdbRating: number | null;
   genres: string[];
   userGenres: string[];
+  directors: string[];
+  writers: string[];
+  actors: string[];
   youtubeTrailerKey: string | null;
   personalRating: number | null;
   errorMessage: string | null;
@@ -26,6 +29,9 @@ export type MovieUpsert = {
 export type MovieRow = Omit<MovieUpsert, "genres" | "userGenres"> & {
   genresJson: string;
   userGenresJson: string;
+  directorsJson: string;
+  writersJson: string;
+  actorsJson: string;
   xxxRated: number;
   watched: number;
 };
@@ -45,6 +51,9 @@ export type SeasonUpsert = {
   tmdbRating: number | null;
   genres: string[];
   userGenres: string[];
+  directors: string[];
+  writers: string[];
+  actors: string[];
   personalRating: number | null;
   errorMessage: string | null;
   lastSyncedAt: number;
@@ -55,6 +64,9 @@ export type SeasonUpsert = {
 export type SeasonRow = Omit<SeasonUpsert, "genres" | "userGenres"> & {
   genresJson: string;
   userGenresJson: string;
+  directorsJson: string;
+  writersJson: string;
+  actorsJson: string;
 };
 
 export type EpisodeUpsert = {
@@ -83,6 +95,9 @@ export type SeriesUpsert = {
   tmdbRating: number | null;
   genres: string[];
   userGenres: string[];
+  directors: string[];
+  writers: string[];
+  actors: string[];
   errorMessage: string | null;
   lastSyncedAt: number;
 };
@@ -90,11 +105,15 @@ export type SeriesUpsert = {
 export type SeriesRow = Omit<SeriesUpsert, "genres" | "userGenres"> & {
   genresJson: string;
   userGenresJson: string;
+  directorsJson: string;
+  writersJson: string;
+  actorsJson: string;
 };
 
 export type MovieQuery = {
   q?: string;
   genre?: string;
+  person?: string;
   minPersonalRating?: number;
   watched?: "all" | "watched" | "unwatched";
   sort?: "title" | "rating" | "recent";
@@ -137,6 +156,9 @@ export function upsertMovie(movie: MovieUpsert) {
       tmdbRating,
       genresJson,
       userGenresJson,
+      directorsJson,
+      writersJson,
+      actorsJson,
       youtubeTrailerKey,
       personalRating,
       errorMessage,
@@ -157,6 +179,9 @@ export function upsertMovie(movie: MovieUpsert) {
       @tmdbRating,
       @genresJson,
       @userGenresJson,
+      @directorsJson,
+      @writersJson,
+      @actorsJson,
       @youtubeTrailerKey,
       @personalRating,
       @errorMessage,
@@ -177,6 +202,9 @@ export function upsertMovie(movie: MovieUpsert) {
       tmdbRating = excluded.tmdbRating,
       genresJson = excluded.genresJson,
       userGenresJson = excluded.userGenresJson,
+      directorsJson = excluded.directorsJson,
+      writersJson = excluded.writersJson,
+      actorsJson = excluded.actorsJson,
       youtubeTrailerKey = excluded.youtubeTrailerKey,
       personalRating = excluded.personalRating,
       errorMessage = excluded.errorMessage,
@@ -186,6 +214,9 @@ export function upsertMovie(movie: MovieUpsert) {
     ...movie,
     genresJson: JSON.stringify(movie.genres),
     userGenresJson: JSON.stringify(movie.userGenres),
+    directorsJson: JSON.stringify(movie.directors),
+    writersJson: JSON.stringify(movie.writers),
+    actorsJson: JSON.stringify(movie.actors),
   });
 }
 
@@ -208,6 +239,9 @@ export function upsertSeason(season: SeasonUpsert) {
       tmdbRating,
       genresJson,
       userGenresJson,
+      directorsJson,
+      writersJson,
+      actorsJson,
       personalRating,
       errorMessage,
       lastSyncedAt,
@@ -228,6 +262,9 @@ export function upsertSeason(season: SeasonUpsert) {
       @tmdbRating,
       @genresJson,
       @userGenresJson,
+      @directorsJson,
+      @writersJson,
+      @actorsJson,
       @personalRating,
       @errorMessage,
       @lastSyncedAt,
@@ -248,6 +285,9 @@ export function upsertSeason(season: SeasonUpsert) {
       tmdbRating = excluded.tmdbRating,
       genresJson = excluded.genresJson,
       userGenresJson = excluded.userGenresJson,
+      directorsJson = excluded.directorsJson,
+      writersJson = excluded.writersJson,
+      actorsJson = excluded.actorsJson,
       personalRating = excluded.personalRating,
       errorMessage = excluded.errorMessage,
       lastSyncedAt = excluded.lastSyncedAt,
@@ -258,6 +298,9 @@ export function upsertSeason(season: SeasonUpsert) {
     ...season,
     genresJson: JSON.stringify(season.genres),
     userGenresJson: JSON.stringify(season.userGenres),
+    directorsJson: JSON.stringify(season.directors),
+    writersJson: JSON.stringify(season.writers),
+    actorsJson: JSON.stringify(season.actors),
   });
 }
 
@@ -311,6 +354,9 @@ export function upsertSeries(series: SeriesUpsert) {
       tmdbRating,
       genresJson,
       userGenresJson,
+      directorsJson,
+      writersJson,
+      actorsJson,
       errorMessage,
       lastSyncedAt
     ) VALUES (
@@ -324,6 +370,9 @@ export function upsertSeries(series: SeriesUpsert) {
       @tmdbRating,
       @genresJson,
       @userGenresJson,
+      @directorsJson,
+      @writersJson,
+      @actorsJson,
       @errorMessage,
       @lastSyncedAt
     )
@@ -337,6 +386,9 @@ export function upsertSeries(series: SeriesUpsert) {
       tmdbRating = excluded.tmdbRating,
       genresJson = excluded.genresJson,
       userGenresJson = excluded.userGenresJson,
+      directorsJson = excluded.directorsJson,
+      writersJson = excluded.writersJson,
+      actorsJson = excluded.actorsJson,
       errorMessage = excluded.errorMessage,
       lastSyncedAt = excluded.lastSyncedAt
     `
@@ -344,6 +396,9 @@ export function upsertSeries(series: SeriesUpsert) {
     ...series,
     genresJson: JSON.stringify(series.genres),
     userGenresJson: JSON.stringify(series.userGenres),
+    directorsJson: JSON.stringify(series.directors),
+    writersJson: JSON.stringify(series.writers),
+    actorsJson: JSON.stringify(series.actors),
   });
 }
 
@@ -354,7 +409,7 @@ export function listMovies(query: MovieQuery): MovieRow[] {
 
   if (query.q) {
     where.push(
-      "(LOWER(titleClean) LIKE @q OR LOWER(titleRaw) LIKE @q)"
+      "(LOWER(titleClean) LIKE @q OR LOWER(titleRaw) LIKE @q OR LOWER(directorsJson) LIKE @q OR LOWER(writersJson) LIKE @q OR LOWER(actorsJson) LIKE @q)"
     );
     params.q = `%${query.q.toLowerCase()}%`;
   }
@@ -362,6 +417,13 @@ export function listMovies(query: MovieQuery): MovieRow[] {
   if (query.genre) {
     where.push("(genresJson LIKE @genre OR userGenresJson LIKE @genre)");
     params.genre = `%\"${query.genre}\"%`;
+  }
+
+  if (query.person) {
+    where.push(
+      "(directorsJson LIKE @person OR writersJson LIKE @person OR actorsJson LIKE @person)"
+    );
+    params.person = `%\"${query.person}\"%`;
   }
 
   if (typeof query.minPersonalRating === "number") {
@@ -400,13 +462,22 @@ export function listSeasons(query: SeasonQuery): SeasonRow[] {
   const params: Record<string, string | number> = {};
 
   if (query.q) {
-    where.push("(LOWER(titleClean) LIKE @q OR LOWER(titleRaw) LIKE @q)");
+    where.push(
+      "(LOWER(titleClean) LIKE @q OR LOWER(titleRaw) LIKE @q OR LOWER(directorsJson) LIKE @q OR LOWER(writersJson) LIKE @q OR LOWER(actorsJson) LIKE @q)"
+    );
     params.q = `%${query.q.toLowerCase()}%`;
   }
 
   if (query.genre) {
     where.push("(genresJson LIKE @genre OR userGenresJson LIKE @genre)");
     params.genre = `%\"${query.genre}\"%`;
+  }
+
+  if (query.person) {
+    where.push(
+      "(directorsJson LIKE @person OR writersJson LIKE @person OR actorsJson LIKE @person)"
+    );
+    params.person = `%\"${query.person}\"%`;
   }
 
   if (typeof query.minPersonalRating === "number") {
@@ -514,6 +585,60 @@ export function listGenres(): string[] {
   return Array.from(unique.values()).sort((a, b) => a.localeCompare(b));
 }
 
+export function listPeople(): {
+  directors: string[];
+  writers: string[];
+  actors: string[];
+} {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `
+      SELECT directorsJson, writersJson, actorsJson FROM movies
+      UNION ALL
+      SELECT directorsJson, writersJson, actorsJson FROM seasons
+      `
+    )
+    .all() as Array<{
+    directorsJson: string | null;
+    writersJson: string | null;
+    actorsJson: string | null;
+  }>;
+
+  const parseList = (value: string | null) => {
+    if (!value) return [];
+    try {
+      const parsed = JSON.parse(value) as string[];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const collect = (
+    rowsToScan: typeof rows,
+    key: "directorsJson" | "writersJson" | "actorsJson"
+  ) => {
+    const unique = new Map<string, string>();
+    rowsToScan.forEach((row) => {
+      parseList(row[key]).forEach((name) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        const lookupKey = trimmed.toLowerCase();
+        if (unique.has(lookupKey)) return;
+        unique.set(lookupKey, trimmed);
+      });
+    });
+    return Array.from(unique.values()).sort((a, b) => a.localeCompare(b));
+  };
+
+  return {
+    directors: collect(rows, "directorsJson"),
+    writers: collect(rows, "writersJson"),
+    actors: collect(rows, "actorsJson"),
+  };
+}
+
 export type MovieUpdate = {
   titleRaw?: string;
   titleClean?: string;
@@ -525,6 +650,9 @@ export type MovieUpdate = {
   tmdbRating?: number | null;
   genresJson?: string;
   userGenresJson?: string;
+  directorsJson?: string;
+  writersJson?: string;
+  actorsJson?: string;
   youtubeTrailerKey?: string | null;
   errorMessage?: string | null;
   lastSyncedAt?: number;
@@ -560,6 +688,9 @@ export type SeasonUpdate = {
   tmdbRating?: number | null;
   genresJson?: string;
   userGenresJson?: string;
+  directorsJson?: string;
+  writersJson?: string;
+  actorsJson?: string;
   errorMessage?: string | null;
   lastSyncedAt?: number;
   personalRating?: number | null;
@@ -592,6 +723,9 @@ export type SeriesUpdate = {
   tmdbRating?: number | null;
   genresJson?: string;
   userGenresJson?: string;
+  directorsJson?: string;
+  writersJson?: string;
+  actorsJson?: string;
   errorMessage?: string | null;
   lastSyncedAt?: number;
 };

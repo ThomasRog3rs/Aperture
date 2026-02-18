@@ -18,6 +18,9 @@ export type Movie = {
    * Optional for backwards compatibility with older API responses.
    */
   omdbGenres?: string[];
+  directors: string[];
+  writers: string[];
+  actors: string[];
   /**
    * User-added genres (stored in `movies.userGenresJson`).
    * Optional for backwards compatibility with older API responses.
@@ -49,6 +52,9 @@ export type Season = {
   tmdbRating: number | null;
   genres: string[];
   omdbGenres?: string[];
+  directors: string[];
+  writers: string[];
+  actors: string[];
   userGenres?: string[];
   personalRating: number | null;
   errorMessage: string | null;
