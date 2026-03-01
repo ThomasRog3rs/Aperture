@@ -21,9 +21,10 @@ type SeriesCardProps = {
   series: Series;
   /** When true, blur the card if any season is XXX rated (e.g. on main browse). */
   blurIfXxxRated?: boolean;
+  variant?: "full" | "compact";
 };
 
-export function SeriesCard({ series, blurIfXxxRated = false }: SeriesCardProps) {
+export function SeriesCard({ series, blurIfXxxRated = false, variant = "full" }: SeriesCardProps) {
   const isLargeScreen = useMediaQuery("(min-width: 1536px)");
   const posterSize = isLargeScreen ? "w780" : "w342";
   const posterUrl = tmdbImageUrl(series.posterPath, posterSize);
@@ -75,36 +76,38 @@ export function SeriesCard({ series, blurIfXxxRated = false }: SeriesCardProps) 
           <div className="absolute inset-0 bg-gradient-to-t from-[#0d0c0a] via-[#0d0c0a]/20 to-transparent opacity-85" />
         </Link>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-          <Link
-            href={`/series/${series.id}`}
-            className="block min-w-0"
-            aria-label={`Open series details for ${series.titleClean}`}
-          >
-            <h3 className="line-clamp-2 font-serif text-lg font-bold tracking-tight text-foreground 2xl:text-2xl">
-              {series.titleClean}
-            </h3>
-          </Link>
-          {directorLabel ? (
-            <p className="text-xs text-faint 2xl:text-sm">{directorLabel}</p>
-          ) : null}
-
-          <div className="flex items-center gap-1.5">
-            <div className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-muted 2xl:px-3 2xl:py-2 2xl:text-sm">
-              <Layers className="h-3.5 w-3.5 2xl:h-4 2xl:w-4" />
-              {seasonsLabel}
-            </div>
-          </div>
-
-          <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+        {variant === "full" ? (
+          <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
             <Link
               href={`/series/${series.id}`}
-              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-background transition-all duration-200 hover:bg-accent-hover 2xl:px-3 2xl:py-2 2xl:text-sm"
+              className="block min-w-0"
+              aria-label={`Open series details for ${series.titleClean}`}
             >
-              View seasons
+              <h3 className="line-clamp-2 font-serif text-lg font-bold tracking-tight text-foreground 2xl:text-2xl">
+                {series.titleClean}
+              </h3>
             </Link>
+            {directorLabel ? (
+              <p className="text-xs text-faint 2xl:text-sm">{directorLabel}</p>
+            ) : null}
+
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-muted 2xl:px-3 2xl:py-2 2xl:text-sm">
+                <Layers className="h-3.5 w-3.5 2xl:h-4 2xl:w-4" />
+                {seasonsLabel}
+              </div>
+            </div>
+
+            <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+              <Link
+                href={`/series/${series.id}`}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-background transition-all duration-200 hover:bg-accent-hover 2xl:px-3 2xl:py-2 2xl:text-sm"
+              >
+                View seasons
+              </Link>
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </motion.div>
   );

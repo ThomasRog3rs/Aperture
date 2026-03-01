@@ -22,9 +22,10 @@ type MovieCardProps = {
   onWatched?: (id: string, watched: boolean) => void;
   /** When true, blur the card if movie is XXX rated (e.g. on main browse, not when searching/filtering). */
   blurIfXxxRated?: boolean;
+  variant?: "full" | "compact";
 };
 
-export function MovieCard({ movie, onPlay, onWatched, blurIfXxxRated = false }: MovieCardProps) {
+export function MovieCard({ movie, onPlay, onWatched, blurIfXxxRated = false, variant = "full" }: MovieCardProps) {
   const isLargeScreen = useMediaQuery("(min-width: 1536px)");
   const posterSize = isLargeScreen ? "w780" : "w342";
   const posterUrl = tmdbImageUrl(movie.posterPath, posterSize);
@@ -84,98 +85,100 @@ export function MovieCard({ movie, onPlay, onWatched, blurIfXxxRated = false }: 
         </Link>
 
         {/* ── Details ────────────────────── */}
-        <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-        <Link
-          href={`/movies/${movie.id}`}
-          className="block min-w-0"
-          aria-label={`Open details for ${movie.titleClean}`}
-        >
-          <h3 className="line-clamp-2 font-serif text-lg font-bold tracking-tight text-foreground 2xl:text-2xl">
-            {movie.titleClean}
-          </h3>
-          <p className="mt-1 text-xs text-muted 2xl:text-sm">
-            {movie.year ?? "\u2014"} · {formatRuntime(movie.runtimeMinutes)}
-          </p>
-          {directorLabel ? (
-            <p className="mt-1 text-xs text-faint 2xl:text-sm">
-              {directorLabel}
-            </p>
-          ) : null}
-        </Link>
-        <div className="flex items-center gap-1.5">
-            {onWatched ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  onWatched(movie.id, !movie.watched);
-                }}
-                className={`cursor-pointer flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors 2xl:px-3 2xl:py-2 2xl:text-sm ${
-                  movie.watched
-                    ? "bg-emerald-500/20 text-emerald-400"
-                    : "border border-border bg-surface text-muted hover:border-border-hover hover:text-foreground"
-                }`}
-                title={movie.watched ? "Mark as unwatched" : "Mark as watched"}
-                aria-label={movie.watched ? "Mark as unwatched" : "Mark as watched"}
-              >
-                <Check className={`h-3.5 w-3.5 2xl:h-4 2xl:w-4 ${movie.watched ? "" : "opacity-40"}`} />
-                {movie.watched ? "Watched" : "Mark watched"}
-              </button>
-            ) : null}
-            <div className="flex items-center gap-1 rounded-md bg-accent-muted px-2 py-1 text-xs font-medium text-accent 2xl:px-3 2xl:py-2 2xl:text-sm">
-              <Star className="h-3.5 w-3.5 2xl:h-4 2xl:w-4" />
-              {formatRating(movie.tmdbRating)}
+        {variant === "full" ? (
+          <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+            <Link
+              href={`/movies/${movie.id}`}
+              className="block min-w-0"
+              aria-label={`Open details for ${movie.titleClean}`}
+            >
+              <h3 className="line-clamp-2 font-serif text-lg font-bold tracking-tight text-foreground 2xl:text-2xl">
+                {movie.titleClean}
+              </h3>
+              <p className="mt-1 text-xs text-muted 2xl:text-sm">
+                {movie.year ?? "\u2014"} · {formatRuntime(movie.runtimeMinutes)}
+              </p>
+              {directorLabel ? (
+                <p className="mt-1 text-xs text-faint 2xl:text-sm">
+                  {directorLabel}
+                </p>
+              ) : null}
+            </Link>
+            <div className="flex items-center gap-1.5">
+                {onWatched ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onWatched(movie.id, !movie.watched);
+                    }}
+                    className={`cursor-pointer flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors 2xl:px-3 2xl:py-2 2xl:text-sm ${
+                      movie.watched
+                        ? "bg-emerald-500/20 text-emerald-400"
+                        : "border border-border bg-surface text-muted hover:border-border-hover hover:text-foreground"
+                    }`}
+                    title={movie.watched ? "Mark as unwatched" : "Mark as watched"}
+                    aria-label={movie.watched ? "Mark as unwatched" : "Mark as watched"}
+                  >
+                    <Check className={`h-3.5 w-3.5 2xl:h-4 2xl:w-4 ${movie.watched ? "" : "opacity-40"}`} />
+                    {movie.watched ? "Watched" : "Mark watched"}
+                  </button>
+                ) : null}
+                <div className="flex items-center gap-1 rounded-md bg-accent-muted px-2 py-1 text-xs font-medium text-accent 2xl:px-3 2xl:py-2 2xl:text-sm">
+                  <Star className="h-3.5 w-3.5 2xl:h-4 2xl:w-4" />
+                  {formatRating(movie.tmdbRating)}
+                </div>
             </div>
-        </div>
 
-        {/* ── Genre pills ──────────────── */}
-        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted 2xl:text-sm">
-          {movie.genres.slice(0, 3).map((genre) => (
-            <span
-              key={genre}
-              className="rounded-md border border-border px-2 py-0.5"
-            >
-              {genre}
-            </span>
-          ))}
-          {notFound ? (
-            <span className="rounded-md border border-accent-strong/40 px-2 py-0.5 text-accent">
-              Not found
-            </span>
-          ) : null}
-          {movie.errorMessage ? (
-            <span
-              className="inline-flex items-center gap-1 rounded-md border border-error/30 px-2 py-0.5 text-error"
-              title={movie.errorMessage}
-            >
-              <AlertTriangle className="h-3 w-3 2xl:h-4 2xl:w-4" />
-              {errorLabel}
-            </span>
-          ) : null}
-        </div>
+            {/* ── Genre pills ──────────────── */}
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted 2xl:text-sm">
+              {movie.genres.slice(0, 3).map((genre) => (
+                <span
+                  key={genre}
+                  className="rounded-md border border-border px-2 py-0.5"
+                >
+                  {genre}
+                </span>
+              ))}
+              {notFound ? (
+                <span className="rounded-md border border-accent-strong/40 px-2 py-0.5 text-accent">
+                  Not found
+                </span>
+              ) : null}
+              {movie.errorMessage ? (
+                <span
+                  className="inline-flex items-center gap-1 rounded-md border border-error/30 px-2 py-0.5 text-error"
+                  title={movie.errorMessage}
+                >
+                  <AlertTriangle className="h-3 w-3 2xl:h-4 2xl:w-4" />
+                  {errorLabel}
+                </span>
+              ) : null}
+            </div>
 
-        {/* ── Actions ──────────────────── */}
-        <div className="mt-auto flex items-center justify-between gap-2 pt-1">
-          <button
-            onClick={() => onPlay(movie)}
-            disabled={playDisabled}
-            className="cursor-pointer flex flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-background transition-all duration-200 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 2xl:px-3 2xl:py-2 2xl:text-sm"
-          >
-            <Play className="h-3.5 w-3.5 2xl:h-4 2xl:w-4" />
-            Play
-          </button>
-          {movie.youtubeTrailerKey ? (
-            <a
-              href={`https://www.youtube.com/watch?v=${movie.youtubeTrailerKey}`}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-lg border border-border px-3 py-2 text-xs text-muted transition-colors hover:border-border-hover hover:text-foreground 2xl:px-3 2xl:py-2 2xl:text-sm"
-            >
-              Trailer
-            </a>
-          ) : null}
-        </div>
-      </div>
+            {/* ── Actions ──────────────────── */}
+            <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+              <button
+                onClick={() => onPlay(movie)}
+                disabled={playDisabled}
+                className="cursor-pointer flex flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-background transition-all duration-200 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 2xl:px-3 2xl:py-2 2xl:text-sm"
+              >
+                <Play className="h-3.5 w-3.5 2xl:h-4 2xl:w-4" />
+                Play
+              </button>
+              {movie.youtubeTrailerKey ? (
+                <a
+                  href={`https://www.youtube.com/watch?v=${movie.youtubeTrailerKey}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-lg border border-border px-3 py-2 text-xs text-muted transition-colors hover:border-border-hover hover:text-foreground 2xl:px-3 2xl:py-2 2xl:text-sm"
+                >
+                  Trailer
+                </a>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </div>
     </motion.div>
   );

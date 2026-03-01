@@ -1,10 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Clapperboard, FolderOpen, Loader2 } from "lucide-react";
 import { MovieGrid } from "@/components/MovieGrid";
+import { HeroFeatured } from "@/components/HeroFeatured";
+import { ContentRow } from "@/components/ContentRow";
 import { StatusBanner } from "@/components/StatusBanner";
-import { TopBar } from "@/components/TopBar";
+import { MainHeader } from "@/components/MainHeader";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import type { Movie, Series } from "@/lib/types";
 
@@ -25,16 +28,31 @@ type FilterOptionsResponse = {
 };
 
 export function LibraryView() {
+  const searchParams = useSearchParams();
+  const initialType = (searchParams.get("type") as "all" | "movies" | "series") || "all";
+  const initialSort = (searchParams.get("sort") as "title" | "rating" | "recent") || "rating";
+  const initialWatched = (searchParams.get("watched") as "all" | "watched" | "unwatched") || "all";
+
   const [movies, setMovies] = useState<Movie[]>([]);
   const [series, setSeries] = useState<Series[]>([]);
   const [query, setQuery] = useState("");
   const [genre, setGenre] = useState("All");
   const [person, setPerson] = useState("");
   const [minRating, setMinRating] = useState<number | null>(null);
-  const [watched, setWatched] = useState<"all" | "watched" | "unwatched">("all");
-  const [mediaType, setMediaType] = useState<"all" | "movies" | "series">("all");
-  const [sort, setSort] = useState<"title" | "rating" | "recent">("rating");
+  const [watched, setWatched] = useState<"all" | "watched" | "unwatched">(initialWatched);
+  const [mediaType, setMediaType] = useState<"all" | "movies" | "series">(initialType);
+  const [sort, setSort] = useState<"title" | "rating" | "recent">(initialSort);
   const [loading, setLoading] = useState(false);
+  
+  useEffect(() => {
+    const typeParam = searchParams.get("type") as "all" | "movies" | "series";
+    const sortParam = searchParams.get("sort") as "title" | "rating" | "recent";
+    const watchedParam = searchParams.get("watched") as "all" | "watched" | "unwatched";
+    
+    if (typeParam && typeParam !== mediaType) setMediaType(typeParam);
+    if (sortParam && sortParam !== sort) setSort(sortParam);
+    if (watchedParam && watchedParam !== watched) setWatched(watchedParam);
+  }, [searchParams]);
   const [syncing, setSyncing] = useState(false);
   const [notice, setNotice] = useState<{
     tone: "info" | "success" | "error";
@@ -212,6 +230,32 @@ export function LibraryView() {
     }
   }, []);
 
+  const getTitle = useCallback((entry: { type: "movie"; movie: Movie } | { type: "series"; series: Series }) =>
+    entry.type === "movie" ? entry.movie.titleClean : entry.series.titleClean, []);
+
+  const getSeriesRating = useCallback((entry: Series) => {
+    const ratings = entry.seasons
+      .map((season) => season.tmdbRating)
+      .filter((value): value is number => typeof value === "number");
+    if (ratings.length === 0) return null;
+    return Math.max(...ratings);
+  }, []);
+
+  const getRating = useCallback((entry: { type: "movie"; movie: Movie } | { type: "series"; series: Series }) =>
+    entry.type === "movie"
+      ? entry.movie.tmdbRating
+      : getSeriesRating(entry.series), [getSeriesRating]);
+
+  const getSeriesSyncedAt = useCallback((entry: Series) => {
+    if (entry.seasons.length === 0) return 0;
+    return Math.max(...entry.seasons.map((season) => season.lastSyncedAt));
+  }, []);
+
+  const getSyncedAt = useCallback((entry: { type: "movie"; movie: Movie } | { type: "series"; series: Series }) =>
+    entry.type === "movie"
+      ? entry.movie.lastSyncedAt
+      : getSeriesSyncedAt(entry.series), [getSeriesSyncedAt]);
+
   const items = useMemo(() => {
     const merged: Array<
       | { type: "movie"; movie: Movie }
@@ -220,28 +264,6 @@ export function LibraryView() {
       ...movies.map((movie) => ({ type: "movie" as const, movie })),
       ...series.map((entry) => ({ type: "series" as const, series: entry })),
     ];
-
-    const getTitle = (entry: (typeof merged)[number]) =>
-      entry.type === "movie" ? entry.movie.titleClean : entry.series.titleClean;
-    const getSeriesRating = (entry: Series) => {
-      const ratings = entry.seasons
-        .map((season) => season.tmdbRating)
-        .filter((value): value is number => typeof value === "number");
-      if (ratings.length === 0) return null;
-      return Math.max(...ratings);
-    };
-    const getRating = (entry: (typeof merged)[number]) =>
-      entry.type === "movie"
-        ? entry.movie.tmdbRating
-        : getSeriesRating(entry.series);
-    const getSeriesSyncedAt = (entry: Series) => {
-      if (entry.seasons.length === 0) return 0;
-      return Math.max(...entry.seasons.map((season) => season.lastSyncedAt));
-    };
-    const getSyncedAt = (entry: (typeof merged)[number]) =>
-      entry.type === "movie"
-        ? entry.movie.lastSyncedAt
-        : getSeriesSyncedAt(entry.series);
 
     const filtered =
       mediaType === "all"
@@ -269,11 +291,14 @@ export function LibraryView() {
     });
 
     return filtered;
-  }, [movies, series, mediaType, sort]);
+  }, [movies, series, mediaType, sort, getTitle, getRating, getSyncedAt]);
+
+  const hasFilters = query !== "" || genre !== "All" || person !== "" || minRating !== null;
+  const showRows = !hasFilters && mediaType === "all" && sort === "rating";
 
   return (
     <div className="min-h-screen">
-      <TopBar
+      <MainHeader
         query={query}
         onQueryChange={setQuery}
         genres={availableGenres}
@@ -292,18 +317,19 @@ export function LibraryView() {
         onSortChange={setSort}
         onSync={handleSync}
         syncing={syncing}
-        lastSyncedAt={lastSyncedAt}
         libraryRootPath={libraryRootPath}
       />
 
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8 2xl:max-w-screen-2xl">
+      <main className={`mx-auto flex w-full flex-col gap-6 ${showRows ? "max-w-none pb-8" : "max-w-6xl px-6 py-8 2xl:max-w-screen-2xl"}`}>
         {notice ? (
-          <StatusBanner tone={notice.tone} message={notice.message} />
+          <div className={showRows ? "px-6 mt-4" : ""}>
+            <StatusBanner tone={notice.tone} message={notice.message} />
+          </div>
         ) : null}
 
         {/* ── No library path configured ── */}
         {!libraryRootPath ? (
-          <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border bg-surface p-12 text-center 2xl:p-16">
+          <div className={`flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border bg-surface p-12 text-center 2xl:p-16 ${showRows ? "mx-6 mt-6" : ""}`}>
             <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-accent-muted text-accent 2xl:h-16 2xl:w-16">
               <FolderOpen className="h-7 w-7 2xl:h-8 2xl:w-8" />
             </div>
@@ -321,7 +347,7 @@ export function LibraryView() {
 
         {/* ── Loading ─────────────────────── */}
         {loading ? (
-          <div className="flex items-center justify-center gap-3 rounded-2xl border border-border bg-surface p-10 text-sm text-muted 2xl:p-12 2xl:text-base">
+          <div className={`flex items-center justify-center gap-3 rounded-2xl border border-border bg-surface p-10 text-sm text-muted 2xl:p-12 2xl:text-base ${showRows ? "mx-6 mt-6" : ""}`}>
             <Loader2 className="h-5 w-5 animate-spin text-accent 2xl:h-6 2xl:w-6" />
             Loading your collection...
           </div>
@@ -332,7 +358,7 @@ export function LibraryView() {
         libraryRootPath &&
         movies.length === 0 &&
         series.length === 0 ? (
-          <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-surface p-12 text-center 2xl:p-16">
+          <div className={`flex flex-col items-center gap-4 rounded-2xl border border-border bg-surface p-12 text-center 2xl:p-16 ${showRows ? "mx-6 mt-6" : ""}`}>
             <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-accent-muted text-accent 2xl:h-16 2xl:w-16">
               <Clapperboard className="h-7 w-7 2xl:h-8 2xl:w-8" />
             </div>
@@ -349,15 +375,55 @@ export function LibraryView() {
         ) : null}
 
         {items.length > 0 ? (
-          <MovieGrid
-            key={items.map((entry) =>
-              entry.type === "movie" ? entry.movie.id : entry.series.id
-            ).join(",")}
-            items={items}
-            onPlayMovie={handlePlay}
-            onWatchedMovie={handleWatched}
-            blurXxxRated={true}
-          />
+          showRows ? (
+            <div className="flex flex-col w-full">
+              <HeroFeatured item={items[0]} onPlay={handlePlay} />
+              
+              <div className="flex flex-col gap-6 -mt-12 sm:-mt-24 relative z-20 pb-12">
+                <ContentRow 
+                  title="Continue Watching" 
+                  items={items.filter(i => i.type === "movie" ? i.movie.watched : i.series.seasons.some(s => s.watched)).slice(0, 20)}
+                  onPlayMovie={handlePlay}
+                  onWatchedMovie={handleWatched}
+                  blurXxxRated={true}
+                />
+                
+                <ContentRow 
+                  title="New Additions" 
+                  items={[...items].sort((a, b) => getSyncedAt(b) - getSyncedAt(a)).slice(0, 20)}
+                  onPlayMovie={handlePlay}
+                  onWatchedMovie={handleWatched}
+                  blurXxxRated={true}
+                />
+                
+                <ContentRow 
+                  title="Top Rated Movies" 
+                  items={items.filter(i => i.type === "movie").sort((a, b) => (getRating(b) || 0) - (getRating(a) || 0)).slice(0, 20)}
+                  onPlayMovie={handlePlay}
+                  onWatchedMovie={handleWatched}
+                  blurXxxRated={true}
+                />
+                
+                <ContentRow 
+                  title="Top Rated TV Shows" 
+                  items={items.filter(i => i.type === "series").sort((a, b) => (getRating(b) || 0) - (getRating(a) || 0)).slice(0, 20)}
+                  onPlayMovie={handlePlay}
+                  onWatchedMovie={handleWatched}
+                  blurXxxRated={true}
+                />
+              </div>
+            </div>
+          ) : (
+            <MovieGrid
+              key={items.map((entry) =>
+                entry.type === "movie" ? entry.movie.id : entry.series.id
+              ).join(",")}
+              items={items}
+              onPlayMovie={handlePlay}
+              onWatchedMovie={handleWatched}
+              blurXxxRated={true}
+            />
+          )
         ) : null}
       </main>
     </div>
