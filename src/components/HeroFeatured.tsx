@@ -28,7 +28,7 @@ export function HeroFeatured({ item, onPlay }: HeroFeaturedProps) {
   const detailUrl = isMovie ? `/movies/${data.id}` : `/series/${data.id}`;
 
   return (
-    <div className="relative w-full h-[60vh] sm:h-[70vh] lg:h-[80vh] flex items-end pb-12 sm:pb-24">
+    <div className="relative w-full h-[45vh] sm:h-[55vh] lg:h-[65vh] flex items-end pb-12 sm:pb-24">
       {/* Background Image */}
       {backdropUrl && (
         <div className="absolute inset-0 z-0">

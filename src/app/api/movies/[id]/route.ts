@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getMovieById, updateMovie } from "@/lib/storage";
+import { getMovieById, updateMovie, deleteMovie } from "@/lib/storage";
 import type { Movie } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -206,4 +206,22 @@ export async function PATCH(
   }
 
   return NextResponse.json({ movie });
+}
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ id?: string }> }
+) {
+  const { id } = await context.params;
+  if (!id) {
+    return NextResponse.json({ error: "id is required." }, { status: 400 });
+  }
+
+  const existing = getMovieById(id);
+  if (!existing) {
+    return NextResponse.json({ error: "Movie not found." }, { status: 404 });
+  }
+
+  deleteMovie(id);
+  return new NextResponse(null, { status: 204 });
 }

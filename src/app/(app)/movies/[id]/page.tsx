@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Image as ImageIcon,
@@ -14,8 +14,13 @@ import {
   Tag,
   Trash2,
   Video,
+  Info,
+  Edit3,
+  CheckCircle2,
+  Circle,
 } from "lucide-react";
 import { StatusBanner } from "@/components/StatusBanner";
+import { Modal } from "@/components/Modal";
 import { formatRating, formatRuntime, tmdbImageUrl } from "@/lib/format";
 import type { Movie } from "@/lib/types";
 
@@ -59,6 +64,7 @@ function dedupeGenres(genres: string[]) {
 
 export default function MovieDetailPage() {
   const params = useParams<{ id?: string | string[] }>();
+  const router = useRouter();
   const movieId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const [movie, setMovie] = useState<Movie | null>(null);
   const [title, setTitle] = useState("");
@@ -80,6 +86,10 @@ export default function MovieDetailPage() {
     tone: "info" | "success" | "error";
     message: string;
   } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
 
   const loadFolderImages = useCallback(
     async (id: string, currentPoster: string | null) => {
@@ -376,11 +386,42 @@ export default function MovieDetailPage() {
     }
   }, [movie]);
 
+  const handleDelete = useCallback(async () => {
+    if (!movie) return;
+    if (
+      !confirm(
+        "Remove this movie from your library? Files on disk will not be deleted."
+      )
+    ) {
+      return;
+    }
+    setDeleting(true);
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/movies/${movie.id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const data = (await response.json()) as { error?: string };
+        throw new Error(data.error || "Failed to remove movie.");
+      }
+      router.push("/");
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        message:
+          error instanceof Error ? error.message : "Failed to remove movie.",
+      });
+      setDeleting(false);
+    }
+  }, [movie]);
+
   const posterCandidate = posterInput.trim() || movie?.posterPath || null;
   const posterUrl = movie ? tmdbImageUrl(posterCandidate, "w780") : null;
+  const hasMissingBasicInfo = movie && (!movie.tmdbRating || !movie.runtimeMinutes || !movie.year);
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen pb-20">
       {!loading && movie ? (
         <div className="relative w-full h-[50vh] sm:h-[60vh] flex items-end pb-12">
           {/* Background Image */}
@@ -429,9 +470,17 @@ export default function MovieDetailPage() {
                   <span>{movie.genres.join(", ")}</span>
                 </>
               )}
+              {movie.tmdbRating && (
+                <>
+                  <span>•</span>
+                  <span className="flex items-center gap-1">
+                    ★ {formatRating(movie.tmdbRating)}
+                  </span>
+                </>
+              )}
             </div>
 
-            <div className="flex items-center gap-3 mt-2">
+            <div className="flex flex-wrap items-center gap-3 mt-4">
               <button
                 onClick={handlePlay}
                 disabled={playing || !movie.filePath}
@@ -440,6 +489,20 @@ export default function MovieDetailPage() {
                 <Play className="h-5 w-5 fill-current" />
                 {playing ? "Launching..." : "Play"}
               </button>
+
+              <button
+                onClick={() => handleWatchedChange(!movie.watched)}
+                disabled={savingWatched}
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold transition-colors border ${
+                  movie.watched 
+                    ? "bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/30" 
+                    : "bg-surface-strong/80 backdrop-blur-sm text-white border-white/10 hover:bg-surface-strong"
+                } disabled:opacity-50`}
+              >
+                {movie.watched ? <CheckCircle2 className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
+                {movie.watched ? "Watched" : "Mark as watched"}
+              </button>
+
               {movie.youtubeTrailerKey && (
                 <a
                   href={`https://www.youtube.com/watch?v=${movie.youtubeTrailerKey}`}
@@ -451,6 +514,22 @@ export default function MovieDetailPage() {
                   Trailer
                 </a>
               )}
+
+              <div className="flex-1" />
+              
+              <button
+                onClick={() => setIsEditModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-surface-strong/80 backdrop-blur-sm text-white font-semibold hover:bg-surface-strong transition-colors border border-white/10"
+              >
+                <Edit3 className="h-4 w-4" /> Edit
+              </button>
+              
+              <button
+                onClick={() => setIsInfoModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-surface-strong/80 backdrop-blur-sm text-white font-semibold hover:bg-surface-strong transition-colors border border-white/10"
+              >
+                <Info className="h-4 w-4" /> Info
+              </button>
             </div>
           </div>
         </div>
@@ -496,9 +575,9 @@ export default function MovieDetailPage() {
         ) : null}
 
         {!loading && movie ? (
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-            <div className="flex flex-col gap-4">
-              <div className="relative aspect-[2/3] w-full overflow-hidden rounded-2xl border border-border bg-surface">
+          <div className="flex flex-col md:flex-row gap-8">
+            <div className="w-full md:w-1/3 lg:w-1/4 flex-shrink-0 flex flex-col gap-4">
+              <div className="relative aspect-[2/3] w-full overflow-hidden rounded-2xl border border-border bg-surface shadow-lg">
                 {posterUrl ? (
                   <Image
                     src={posterUrl}
@@ -516,182 +595,24 @@ export default function MovieDetailPage() {
                   </div>
                 )}
               </div>
-              <div className="rounded-2xl border border-border bg-surface p-4">
-                <div className="flex flex-wrap items-center gap-3">
+
+              {hasMissingBasicInfo && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 flex flex-col gap-3">
+                  <p className="text-sm text-amber-500 font-medium">Missing info</p>
+                  <p className="text-xs text-amber-500/80">Some details like year, runtime, or rating are missing. Fetch from OMDb to update.</p>
                   <button
-                    onClick={handlePlay}
-                    disabled={playing || !movie.filePath}
-                    className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 2xl:py-2 2xl:text-base"
+                    onClick={handleRefreshPoster}
+                    disabled={refreshing}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-500 transition-colors hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <Play className="h-4 w-4 2xl:h-5 2xl:w-5" />
-                    {playing ? "Launching..." : "Play movie"}
+                    <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+                    {refreshing ? "Fetching..." : "Fetch from OMDb"}
                   </button>
-                  {movie.youtubeTrailerKey ? (
-                    <a
-                      href={`https://www.youtube.com/watch?v=${movie.youtubeTrailerKey}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground 2xl:py-2 2xl:text-base"
-                    >
-                      Trailer
-                    </a>
-                  ) : null}
                 </div>
-                <label className="mt-4 flex cursor-pointer items-center gap-3 text-sm text-muted 2xl:text-base">
-                  <input
-                    type="checkbox"
-                    checked={movie.xxxRated ?? false}
-                    onChange={(e) => handleXxxRatedChange(e.target.checked)}
-                    disabled={savingXxxRated}
-                    className="h-4 w-4 rounded border-border bg-background text-accent focus:ring-accent/40"
-                  />
-                  <span>
-                    XXX rated
-                    <span className="ml-1.5 text-xs text-faint">
-                      (blurred on main screen until search/filter)
-                    </span>
-                  </span>
-                </label>
-                <label className="mt-3 flex cursor-pointer items-center gap-3 text-sm text-muted 2xl:text-base">
-                  <input
-                    type="checkbox"
-                    checked={movie.watched ?? false}
-                    onChange={(e) => handleWatchedChange(e.target.checked)}
-                    disabled={savingWatched}
-                    className="h-4 w-4 rounded border-border bg-background text-accent focus:ring-accent/40"
-                  />
-                  <span>Watched</span>
-                </label>
-                <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-muted 2xl:text-sm">
-                  <div className="rounded-xl border border-border bg-background/40 p-3">
-                    <p className="text-faint">Year</p>
-                    <p className="mt-1 text-sm text-foreground">
-                      {movie.year ?? "\u2014"}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3">
-                    <p className="text-faint">Runtime</p>
-                    <p className="mt-1 text-sm text-foreground">
-                      {formatRuntime(movie.runtimeMinutes)}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3">
-                    <p className="text-faint">Rating</p>
-                    <p className="mt-1 text-sm text-foreground">
-                      {formatRating(movie.tmdbRating)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-border bg-surface p-4 text-sm text-muted 2xl:text-base">
-                <p className="font-medium text-foreground">File-derived title</p>
-                <p className="mt-1">{movie.titleRaw}</p>
-              </div>
+              )}
             </div>
 
-            <div className="flex flex-col gap-6">
-              <div className="rounded-2xl border border-border bg-surface p-6">
-                <div className="flex flex-col gap-4">
-                  <label className="flex flex-col gap-2 text-sm text-muted 2xl:text-base">
-                    <span className="text-xs uppercase tracking-[0.2em] text-faint 2xl:text-sm">
-                      Display title
-                    </span>
-                    <input
-                      value={title}
-                      onChange={(event) => setTitle(event.target.value)}
-                      className="rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60 2xl:py-2 2xl:text-base"
-                      placeholder="Movie title"
-                    />
-                  </label>
-
-                  <label className="flex flex-col gap-2 text-sm text-muted 2xl:text-base">
-                    <span className="text-xs uppercase tracking-[0.2em] text-faint 2xl:text-sm">
-                      Poster URL
-                    </span>
-                    <input
-                      value={posterInput}
-                      onChange={(event) => setPosterInput(event.target.value)}
-                      className="rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60 2xl:py-2 2xl:text-base"
-                      placeholder="https://..."
-                    />
-                  </label>
-
-                  {folderImagesError ? (
-                    <div className="rounded-lg border border-border bg-background/40 px-4 py-3 text-xs text-muted">
-                      {folderImagesError}
-                    </div>
-                  ) : folderImagesLoading ? (
-                    <div className="rounded-lg border border-border bg-background/40 px-4 py-3 text-xs text-muted">
-                      Scanning folder for images...
-                    </div>
-                  ) : folderImages.length > 0 ? (
-                    <div className="rounded-lg border border-border bg-background/40 p-4">
-                      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-faint">
-                        <ImageIcon className="h-3.5 w-3.5" />
-                        Poster from folder
-                      </div>
-                      <div className="mt-3 flex flex-wrap items-center gap-3">
-                        <select
-                          value={selectedFolderImage}
-                          onChange={(event) =>
-                            setSelectedFolderImage(event.target.value)
-                          }
-                          className="min-w-[220px] flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60 2xl:py-2 2xl:text-base"
-                        >
-                          {folderImages.map((image) => (
-                            <option key={image.url} value={image.url}>
-                              {image.name}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => setPosterInput(selectedFolderImage)}
-                          disabled={!selectedFolderImage}
-                          className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 2xl:py-2 2xl:text-base"
-                        >
-                          Use selected
-                        </button>
-                      </div>
-                      <p className="mt-2 text-xs text-muted">
-                        Select a file from the movie folder to use as the poster.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border border-border bg-background/40 px-4 py-3 text-xs text-muted">
-                      No poster images found in the movie folder.
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      onClick={handleSave}
-                      disabled={saving}
-                      className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 2xl:py-2 2xl:text-base"
-                    >
-                      <Save className="h-4 w-4 2xl:h-5 2xl:w-5" />
-                      {saving ? "Saving..." : "Save changes"}
-                    </button>
-                    <button
-                      onClick={handleRefreshPoster}
-                      disabled={refreshing}
-                      className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 2xl:py-2 2xl:text-base"
-                    >
-                      <RefreshCw
-                        className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
-                      />
-                      {refreshing ? "Fetching..." : "Fetch from OMDb"}
-                    </button>
-                    <button
-                      onClick={() => setPosterInput("")}
-                      className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground 2xl:py-2 2xl:text-base"
-                    >
-                      Clear poster
-                    </button>
-                  </div>
-                </div>
-              </div>
-
+            <div className="flex-1 flex flex-col gap-8">
               {((movie.directors ?? []).length > 0 ||
                 (movie.writers ?? []).length > 0 ||
                 (movie.actors ?? []).length > 0) && (
@@ -699,33 +620,33 @@ export default function MovieDetailPage() {
                   <p className="font-serif text-lg font-medium text-foreground 2xl:text-xl">
                     Cast & Crew
                   </p>
-                  <div className="mt-4 space-y-3">
+                  <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
                     {movie.directors.length > 0 ? (
                       <div>
-                        <p className="text-xs uppercase tracking-[0.2em] text-faint">
+                        <p className="text-xs uppercase tracking-[0.2em] text-faint mb-2">
                           Director
                         </p>
-                        <p className="mt-1 text-foreground">
+                        <p className="text-foreground">
                           {movie.directors.join(", ")}
                         </p>
                       </div>
                     ) : null}
                     {movie.writers.length > 0 ? (
                       <div>
-                        <p className="text-xs uppercase tracking-[0.2em] text-faint">
+                        <p className="text-xs uppercase tracking-[0.2em] text-faint mb-2">
                           Writer
                         </p>
-                        <p className="mt-1 text-foreground">
+                        <p className="text-foreground">
                           {movie.writers.join(", ")}
                         </p>
                       </div>
                     ) : null}
                     {movie.actors.length > 0 ? (
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.2em] text-faint">
+                      <div className="sm:col-span-2">
+                        <p className="text-xs uppercase tracking-[0.2em] text-faint mb-2">
                           Cast
                         </p>
-                        <p className="mt-1 text-foreground">
+                        <p className="text-foreground leading-relaxed">
                           {movie.actors.join(", ")}
                         </p>
                       </div>
@@ -733,243 +654,268 @@ export default function MovieDetailPage() {
                   </div>
                 </div>
               )}
-
-              <div className="rounded-2xl border border-border bg-surface p-6">
-                <div className="flex items-center gap-2">
-                  <Tag className="h-4 w-4 text-accent" />
-                  <p className="font-serif text-lg font-medium text-foreground 2xl:text-xl">
-                    Genres
-                  </p>
-                </div>
-                <div className="mt-4 space-y-4">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-faint">
-                      From OMDb
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                      {(movie.omdbGenres ?? []).length > 0 ? (
-                        (movie.omdbGenres ?? []).map((genreName) => (
-                          <span
-                            key={genreName}
-                            className="rounded-md border border-border px-2 py-1 text-muted"
-                          >
-                            {genreName}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-sm text-muted">\u2014</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-faint">
-                      Your custom genres
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                      {userGenres.length > 0 ? (
-                        userGenres.map((genreName) => (
-                          <span
-                            key={genreName}
-                            className="inline-flex items-center gap-2 rounded-md border border-border bg-background/40 px-2 py-1 text-foreground"
-                          >
-                            {genreName}
-                            <button
-                              onClick={() =>
-                                handleSaveGenres(
-                                  userGenres.filter((g) => g !== genreName)
-                                )
-                              }
-                              disabled={savingGenres}
-                              className="text-muted transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                              aria-label={`Remove ${genreName}`}
-                              title="Remove"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-sm text-muted">\u2014</span>
-                      )}
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap items-center gap-3">
-                      <input
-                        value={genreInput}
-                        onChange={(event) => setGenreInput(event.target.value)}
-                        className="min-w-[220px] flex-1 rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60 2xl:py-2 2xl:text-base"
-                        placeholder="Add a genre (e.g. Noir)"
-                      />
-                      <button
-                        onClick={() => {
-                          const next = genreInput.trim();
-                          if (!next) return;
-                          handleSaveGenres([...userGenres, next]);
-                        }}
-                        disabled={savingGenres || !genreInput.trim()}
-                        className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 2xl:py-2 2xl:text-base"
-                      >
-                        {savingGenres ? "Saving..." : "Add genre"}
-                      </button>
-                    </div>
-                    <p className="mt-2 text-xs text-muted">
-                      Custom genres are kept even when you re-fetch from OMDb.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-border bg-surface p-6 text-sm text-muted 2xl:text-base">
-                <p className="font-medium text-foreground">Database details</p>
-                <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="rounded-xl border border-border bg-background/40 p-3">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      id
-                    </dt>
-                    <dd className="mt-1 break-all text-foreground">{movie.id}</dd>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      tmdbId
-                    </dt>
-                    <dd className="mt-1 text-foreground">
-                      {movie.tmdbId ?? "\u2014"}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      titleClean
-                    </dt>
-                    <dd className="mt-1 break-words text-foreground">
-                      {movie.titleClean}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      titleRaw
-                    </dt>
-                    <dd className="mt-1 break-words text-foreground">
-                      {movie.titleRaw}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      year
-                    </dt>
-                    <dd className="mt-1 text-foreground">
-                      {movie.year ?? "\u2014"}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      runtimeMinutes
-                    </dt>
-                    <dd className="mt-1 text-foreground">
-                      {movie.runtimeMinutes ?? "\u2014"}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      tmdbRating
-                    </dt>
-                    <dd className="mt-1 text-foreground">
-                      {movie.tmdbRating ?? "\u2014"}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      youtubeTrailerKey
-                    </dt>
-                    <dd className="mt-1 break-all text-foreground">
-                      {movie.youtubeTrailerKey ?? "\u2014"}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      folderPath
-                    </dt>
-                    <dd className="mt-1 break-all text-foreground">
-                      {movie.folderPath}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      filePath
-                    </dt>
-                    <dd className="mt-1 break-all text-foreground">
-                      {movie.filePath}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      fileSizeBytes
-                    </dt>
-                    <dd className="mt-1 text-foreground">
-                      {movie.fileSizeBytes}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      titleEditedAt
-                    </dt>
-                    <dd className="mt-1 text-foreground">
-                      {formatTimestamp(movie.titleEditedAt)}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      lastSyncedAt
-                    </dt>
-                    <dd className="mt-1 text-foreground">
-                      {formatTimestamp(movie.lastSyncedAt)}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      errorMessage
-                    </dt>
-                    <dd className="mt-1 break-words text-foreground">
-                      {movie.errorMessage ?? "\u2014"}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      posterPath
-                    </dt>
-                    <dd className="mt-1 break-all text-foreground">
-                      {movie.posterPath ?? "\u2014"}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      backdropPath
-                    </dt>
-                    <dd className="mt-1 break-all text-foreground">
-                      {movie.backdropPath ?? "\u2014"}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
-                    <dt className="text-xs uppercase tracking-[0.2em] text-faint">
-                      genres (combined)
-                    </dt>
-                    <dd className="mt-1 break-words text-foreground">
-                      {movie.genres.length > 0 ? movie.genres.join(", ") : "\u2014"}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-
-              <div className="rounded-2xl border border-border bg-surface p-6 text-sm text-muted 2xl:text-base">
-                <p>
-                  Editing the title here overrides the file-derived name. Future
-                  syncs will keep your custom title.
-                </p>
-              </div>
             </div>
           </div>
         ) : null}
       </main>
+
+      {/* Edit Modal */}
+      {movie && (
+        <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Edit Movie">
+          <div className="flex flex-col gap-8">
+            <div className="flex flex-col gap-4">
+              <label className="flex flex-col gap-2 text-sm text-muted">
+                <span className="text-xs uppercase tracking-[0.2em] text-faint">
+                  Display title
+                </span>
+                <input
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  className="rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60"
+                  placeholder="Movie title"
+                />
+              </label>
+
+              <label className="flex flex-col gap-2 text-sm text-muted">
+                <span className="text-xs uppercase tracking-[0.2em] text-faint">
+                  Poster URL
+                </span>
+                <input
+                  value={posterInput}
+                  onChange={(event) => setPosterInput(event.target.value)}
+                  className="rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60"
+                  placeholder="https://..."
+                />
+              </label>
+
+              {folderImagesError ? (
+                <div className="rounded-lg border border-border bg-background/40 px-4 py-3 text-xs text-muted">
+                  {folderImagesError}
+                </div>
+              ) : folderImagesLoading ? (
+                <div className="rounded-lg border border-border bg-background/40 px-4 py-3 text-xs text-muted">
+                  Scanning folder for images...
+                </div>
+              ) : folderImages.length > 0 ? (
+                <div className="rounded-lg border border-border bg-background/40 p-4">
+                  <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-faint">
+                    <ImageIcon className="h-3.5 w-3.5" />
+                    Poster from folder
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <select
+                      value={selectedFolderImage}
+                      onChange={(event) => setSelectedFolderImage(event.target.value)}
+                      className="min-w-[220px] flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60"
+                    >
+                      {folderImages.map((image) => (
+                        <option key={image.url} value={image.url}>
+                          {image.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setPosterInput(selectedFolderImage)}
+                      disabled={!selectedFolderImage}
+                      className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Use selected
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-3 mt-2">
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Save className="h-4 w-4" />
+                  {saving ? "Saving..." : "Save changes"}
+                </button>
+                <button
+                  onClick={handleRefreshPoster}
+                  disabled={refreshing}
+                  className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+                  {refreshing ? "Fetching..." : "Fetch from OMDb"}
+                </button>
+                <button
+                  onClick={() => setPosterInput("")}
+                  className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground"
+                >
+                  Clear poster
+                </button>
+              </div>
+            </div>
+
+            <div className="h-px w-full bg-border" />
+
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-2">
+                <Tag className="h-4 w-4 text-accent" />
+                <p className="font-serif text-lg font-medium text-foreground">Genres</p>
+              </div>
+              
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-faint">Your custom genres</p>
+                <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                  {userGenres.length > 0 ? (
+                    userGenres.map((genreName) => (
+                      <span
+                        key={genreName}
+                        className="inline-flex items-center gap-2 rounded-md border border-border bg-background/40 px-2 py-1 text-foreground"
+                      >
+                        {genreName}
+                        <button
+                          onClick={() =>
+                            handleSaveGenres(userGenres.filter((g) => g !== genreName))
+                          }
+                          disabled={savingGenres}
+                          className="text-muted transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-sm text-muted">—</span>
+                  )}
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <input
+                    value={genreInput}
+                    onChange={(event) => setGenreInput(event.target.value)}
+                    className="min-w-[220px] flex-1 rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60"
+                    placeholder="Add a genre (e.g. Noir)"
+                  />
+                  <button
+                    onClick={() => {
+                      const next = genreInput.trim();
+                      if (!next) return;
+                      handleSaveGenres([...userGenres, next]);
+                    }}
+                    disabled={savingGenres || !genreInput.trim()}
+                    className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {savingGenres ? "Saving..." : "Add genre"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="h-px w-full bg-border" />
+
+            <div className="flex flex-col gap-4">
+              <p className="font-serif text-lg font-medium text-foreground">Options</p>
+              <label className="flex cursor-pointer items-center gap-3 text-sm text-muted">
+                <input
+                  type="checkbox"
+                  checked={movie.xxxRated ?? false}
+                  onChange={(e) => handleXxxRatedChange(e.target.checked)}
+                  disabled={savingXxxRated}
+                  className="h-4 w-4 rounded border-border bg-background text-accent focus:ring-accent/40"
+                />
+                <span>
+                  XXX rated <span className="ml-1.5 text-xs text-faint">(blurred on main screen)</span>
+                </span>
+              </label>
+
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/50 bg-transparent px-4 py-2 text-sm text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" />
+                {deleting ? "Removing..." : "Remove from library"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Info Modal */}
+      {movie && (
+        <Modal isOpen={isInfoModalOpen} onClose={() => setIsInfoModalOpen(false)} title="Database Details">
+          <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 text-sm">
+            <div className="rounded-xl border border-border bg-background/40 p-3">
+              <dt className="text-xs uppercase tracking-[0.2em] text-faint">id</dt>
+              <dd className="mt-1 break-all text-foreground">{movie.id}</dd>
+            </div>
+            <div className="rounded-xl border border-border bg-background/40 p-3">
+              <dt className="text-xs uppercase tracking-[0.2em] text-faint">tmdbId</dt>
+              <dd className="mt-1 text-foreground">{movie.tmdbId ?? "—"}</dd>
+            </div>
+            <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
+              <dt className="text-xs uppercase tracking-[0.2em] text-faint">titleClean</dt>
+              <dd className="mt-1 break-words text-foreground">{movie.titleClean}</dd>
+            </div>
+            <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
+              <dt className="text-xs uppercase tracking-[0.2em] text-faint">titleRaw</dt>
+              <dd className="mt-1 break-words text-foreground">{movie.titleRaw}</dd>
+            </div>
+            <div className="rounded-xl border border-border bg-background/40 p-3">
+              <dt className="text-xs uppercase tracking-[0.2em] text-faint">year</dt>
+              <dd className="mt-1 text-foreground">{movie.year ?? "—"}</dd>
+            </div>
+            <div className="rounded-xl border border-border bg-background/40 p-3">
+              <dt className="text-xs uppercase tracking-[0.2em] text-faint">runtimeMinutes</dt>
+              <dd className="mt-1 text-foreground">{movie.runtimeMinutes ?? "—"}</dd>
+            </div>
+            <div className="rounded-xl border border-border bg-background/40 p-3">
+              <dt className="text-xs uppercase tracking-[0.2em] text-faint">tmdbRating</dt>
+              <dd className="mt-1 text-foreground">{movie.tmdbRating ?? "—"}</dd>
+            </div>
+            <div className="rounded-xl border border-border bg-background/40 p-3">
+              <dt className="text-xs uppercase tracking-[0.2em] text-faint">youtubeTrailerKey</dt>
+              <dd className="mt-1 break-all text-foreground">{movie.youtubeTrailerKey ?? "—"}</dd>
+            </div>
+            <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
+              <dt className="text-xs uppercase tracking-[0.2em] text-faint">folderPath</dt>
+              <dd className="mt-1 break-all text-foreground">{movie.folderPath}</dd>
+            </div>
+            <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
+              <dt className="text-xs uppercase tracking-[0.2em] text-faint">filePath</dt>
+              <dd className="mt-1 break-all text-foreground">{movie.filePath}</dd>
+            </div>
+            <div className="rounded-xl border border-border bg-background/40 p-3">
+              <dt className="text-xs uppercase tracking-[0.2em] text-faint">fileSizeBytes</dt>
+              <dd className="mt-1 text-foreground">{movie.fileSizeBytes}</dd>
+            </div>
+            <div className="rounded-xl border border-border bg-background/40 p-3">
+              <dt className="text-xs uppercase tracking-[0.2em] text-faint">titleEditedAt</dt>
+              <dd className="mt-1 text-foreground">{formatTimestamp(movie.titleEditedAt)}</dd>
+            </div>
+            <div className="rounded-xl border border-border bg-background/40 p-3">
+              <dt className="text-xs uppercase tracking-[0.2em] text-faint">lastSyncedAt</dt>
+              <dd className="mt-1 text-foreground">{formatTimestamp(movie.lastSyncedAt)}</dd>
+            </div>
+            <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
+              <dt className="text-xs uppercase tracking-[0.2em] text-faint">errorMessage</dt>
+              <dd className="mt-1 break-words text-foreground">{movie.errorMessage ?? "—"}</dd>
+            </div>
+            <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
+              <dt className="text-xs uppercase tracking-[0.2em] text-faint">posterPath</dt>
+              <dd className="mt-1 break-all text-foreground">{movie.posterPath ?? "—"}</dd>
+            </div>
+            <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
+              <dt className="text-xs uppercase tracking-[0.2em] text-faint">backdropPath</dt>
+              <dd className="mt-1 break-all text-foreground">{movie.backdropPath ?? "—"}</dd>
+            </div>
+            <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
+              <dt className="text-xs uppercase tracking-[0.2em] text-faint">genres (combined)</dt>
+              <dd className="mt-1 break-words text-foreground">
+                {movie.genres.length > 0 ? movie.genres.join(", ") : "—"}
+              </dd>
+            </div>
+          </dl>
+        </Modal>
+      )}
     </div>
   );
 }

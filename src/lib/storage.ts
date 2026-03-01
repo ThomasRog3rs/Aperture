@@ -760,6 +760,11 @@ export function getMovieById(id: string): MovieRow | null {
   return (row as MovieRow | undefined) ?? null;
 }
 
+export function deleteMovie(id: string) {
+  const db = getDb();
+  db.prepare("DELETE FROM movies WHERE id = ?").run(id);
+}
+
 export function getSeasonById(id: string): SeasonRow | null {
   const db = getDb();
   const row = db.prepare("SELECT * FROM seasons WHERE id = ?").get(id);
@@ -778,6 +783,22 @@ export function getSeriesByFolderPath(seriesFolderPath: string): SeriesRow | nul
     .prepare("SELECT * FROM series WHERE seriesFolderPath = ?")
     .get(seriesFolderPath);
   return (row as SeriesRow | undefined) ?? null;
+}
+
+export function deleteSeries(id: string) {
+  const db = getDb();
+  const seriesFolderPath = getSeriesFolderPathById(id);
+  if (!seriesFolderPath) return;
+  const seasonRows = listSeasonsBySeriesFolderPath(seriesFolderPath);
+  const seasonIds = seasonRows.map((r) => r.id);
+  if (seasonIds.length > 0) {
+    const placeholders = seasonIds.map(() => "?").join(", ");
+    db.prepare(
+      `DELETE FROM episodes WHERE seasonId IN (${placeholders})`
+    ).run(...seasonIds);
+  }
+  db.prepare("DELETE FROM seasons WHERE seriesFolderPath = ?").run(seriesFolderPath);
+  db.prepare("DELETE FROM series WHERE id = ?").run(id);
 }
 
 export function deleteSeasonById(id: string) {
