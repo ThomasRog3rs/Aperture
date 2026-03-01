@@ -2,32 +2,32 @@
 
 :root {
   /* ── Backgrounds ─────────────────────── */
-  --background: #0d0c0a;
-  --foreground: #f0ebe0;
+  --background: #0f1115;
+  --foreground: #f1f3f5;
 
   /* ── Surface & borders ───────────────── */
-  --surface: rgba(255, 248, 240, 0.04);
-  --surface-strong: rgba(255, 248, 240, 0.08);
-  --border-color: rgba(255, 235, 205, 0.10);
-  --border-hover: rgba(255, 235, 205, 0.22);
+  --surface: rgba(255, 255, 255, 0.03);
+  --surface-strong: rgba(255, 255, 255, 0.06);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.15);
 
-  /* ── Accent (warm gold) ──────────────── */
-  --accent: #d4a853;
-  --accent-hover: #e2bc6a;
-  --accent-muted: rgba(212, 168, 83, 0.20);
-  --accent-strong: #b8860b;
+  /* ── Accent (red) ────────────────────── */
+  --accent: #e50914;
+  --accent-hover: #f40612;
+  --accent-muted: rgba(229, 9, 20, 0.15);
+  --accent-strong: #b20710;
 
   /* ── Text ─────────────────────────────── */
-  --text-muted: #a39e93;
-  --text-faint: #706b62;
+  --text-muted: #9ca3af;
+  --text-faint: #6b7280;
 
   /* ── Status ──────────────────────────── */
-  --success: #8aba7a;
-  --success-muted: rgba(138, 186, 122, 0.15);
-  --error: #c66862;
-  --error-muted: rgba(198, 104, 98, 0.15);
-  --info: #7ea8c9;
-  --info-muted: rgba(126, 168, 201, 0.15);
+  --success: #22c55e;
+  --success-muted: rgba(34, 197, 94, 0.15);
+  --error: #ef4444;
+  --error-muted: rgba(239, 68, 68, 0.15);
+  --info: #3b82f6;
+  --info-muted: rgba(59, 130, 246, 0.15);
 }
 
 @theme inline {
@@ -71,33 +71,8 @@ a {
 }
 
 body {
-  background:
-    radial-gradient(
-      ellipse 120% 80% at 50% -20%,
-      rgba(212, 168, 83, 0.08) 0%,
-      transparent 60%
-    ),
-    radial-gradient(
-      ellipse 80% 60% at 80% 110%,
-      rgba(184, 134, 11, 0.05) 0%,
-      transparent 55%
-    ),
-    var(--background);
+  background: var(--background);
   color: var(--foreground);
-}
-
-/* Subtle film-grain texture overlay */
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.025;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 256px 256px;
-  z-index: 9999;
 }
 
 img {
@@ -105,8 +80,8 @@ img {
 }
 
 ::selection {
-  background: rgba(212, 168, 83, 0.35);
-  color: #fff8ed;
+  background: rgba(229, 9, 20, 0.35);
+  color: #ffffff;
 }
 
 /* Focus ring for keyboard/remote navigation (TV-friendly) */
@@ -118,14 +93,15 @@ img {
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 235, 205, 0.12);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 235, 205, 0.22);
+  background: rgba(255, 255, 255, 0.22);
 }

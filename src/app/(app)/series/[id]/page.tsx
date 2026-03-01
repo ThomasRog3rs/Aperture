@@ -327,28 +327,66 @@ export default function SeriesDetailPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-border bg-background/80 backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-4 px-6 py-5 2xl:max-w-screen-2xl">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground 2xl:py-2 2xl:text-base"
-          >
-            <ArrowLeft className="h-4 w-4 2xl:h-5 2xl:w-5" />
-            Back to library
-          </Link>
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-faint 2xl:text-sm">
-              Series details
-            </p>
-            <h1 className="font-serif text-2xl font-bold tracking-tight text-foreground 2xl:text-4xl">
-              {series?.titleClean ?? "Loading..."}
+      {!loading && series ? (
+        <div className="relative w-full h-[50vh] sm:h-[60vh] flex items-end pb-12">
+          {/* Background Image */}
+          {series.seasons[0]?.backdropPath ? (
+            <div className="absolute inset-0 z-0">
+              <Image
+                src={tmdbImageUrl(series.seasons[0]?.backdropPath, "original") || ""}
+                alt={series.titleClean}
+                fill
+                priority
+                className="object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-r from-background via-background/40 to-transparent" />
+            </div>
+          ) : (
+            <div className="absolute inset-0 z-0 bg-surface-strong">
+              <div className="absolute inset-0 bg-gradient-to-t from-background to-transparent" />
+            </div>
+          )}
+
+          <div className="relative z-10 w-full px-6 lg:px-12 max-w-7xl mx-auto flex flex-col gap-4">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors w-fit mb-4"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to library
+            </Link>
+            
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white drop-shadow-lg">
+              {series.titleClean}
             </h1>
-            {series ? (
-              <p className="mt-1 text-xs text-muted 2xl:text-sm">{seasonSummary}</p>
-            ) : null}
+            
+            <div className="flex flex-wrap items-center gap-3 text-sm sm:text-base text-white/80 font-medium drop-shadow-md">
+              {series.seasons[0]?.year && <span>{series.seasons[0].year}</span>}
+              <span>•</span>
+              <span>{seasonSummary}</span>
+              {series.seasons[0]?.genres && series.seasons[0].genres.length > 0 && (
+                <>
+                  <span>•</span>
+                  <span>{series.seasons[0].genres.slice(0, 3).join(", ")}</span>
+                </>
+              )}
+            </div>
           </div>
         </div>
-      </header>
+      ) : (
+        <header className="border-b border-border bg-background/80 backdrop-blur-xl">
+          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-4 px-6 py-5 2xl:max-w-screen-2xl">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to library
+            </Link>
+          </div>
+        </header>
+      )}
 
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8 2xl:max-w-screen-2xl">
         {notice ? <StatusBanner tone={notice.tone} message={notice.message} /> : null}

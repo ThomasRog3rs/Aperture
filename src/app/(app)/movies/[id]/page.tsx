@@ -381,25 +381,92 @@ export default function MovieDetailPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-border bg-background/80 backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-4 px-6 py-5 2xl:max-w-screen-2xl">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground 2xl:py-2 2xl:text-base"
-          >
-            <ArrowLeft className="h-4 w-4 2xl:h-5 2xl:w-5" />
-            Back to library
-          </Link>
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-faint 2xl:text-sm">
-              Movie details
-            </p>
-            <h1 className="font-serif text-2xl font-bold tracking-tight text-foreground 2xl:text-4xl">
-              {movie?.titleClean ?? "Loading..."}
+      {!loading && movie ? (
+        <div className="relative w-full h-[50vh] sm:h-[60vh] flex items-end pb-12">
+          {/* Background Image */}
+          {movie.backdropPath ? (
+            <div className="absolute inset-0 z-0">
+              <Image
+                src={tmdbImageUrl(movie.backdropPath, "original") || ""}
+                alt={movie.titleClean}
+                fill
+                priority
+                className="object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-r from-background via-background/40 to-transparent" />
+            </div>
+          ) : (
+            <div className="absolute inset-0 z-0 bg-surface-strong">
+              <div className="absolute inset-0 bg-gradient-to-t from-background to-transparent" />
+            </div>
+          )}
+
+          <div className="relative z-10 w-full px-6 lg:px-12 max-w-7xl mx-auto flex flex-col gap-4">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors w-fit mb-4"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to library
+            </Link>
+            
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white drop-shadow-lg">
+              {movie.titleClean}
             </h1>
+            
+            <div className="flex flex-wrap items-center gap-3 text-sm sm:text-base text-white/80 font-medium drop-shadow-md">
+              {movie.year && <span>{movie.year}</span>}
+              {movie.runtimeMinutes && (
+                <>
+                  <span>•</span>
+                  <span>{formatRuntime(movie.runtimeMinutes)}</span>
+                </>
+              )}
+              {movie.genres.length > 0 && (
+                <>
+                  <span>•</span>
+                  <span>{movie.genres.join(", ")}</span>
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 mt-2">
+              <button
+                onClick={handlePlay}
+                disabled={playing || !movie.filePath}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-white text-black font-semibold hover:bg-white/90 transition-colors disabled:opacity-50"
+              >
+                <Play className="h-5 w-5 fill-current" />
+                {playing ? "Launching..." : "Play"}
+              </button>
+              {movie.youtubeTrailerKey && (
+                <a
+                  href={`https://www.youtube.com/watch?v=${movie.youtubeTrailerKey}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-surface-strong/80 backdrop-blur-sm text-white font-semibold hover:bg-surface-strong transition-colors border border-white/10"
+                >
+                  <Video className="h-5 w-5" />
+                  Trailer
+                </a>
+              )}
+            </div>
           </div>
         </div>
-      </header>
+      ) : (
+        <header className="border-b border-border bg-background/80 backdrop-blur-xl">
+          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-4 px-6 py-5 2xl:max-w-screen-2xl">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to library
+            </Link>
+          </div>
+        </header>
+      )}
 
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8 2xl:max-w-screen-2xl">
         {notice ? <StatusBanner tone={notice.tone} message={notice.message} /> : null}
