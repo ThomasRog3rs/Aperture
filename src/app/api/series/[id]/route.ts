@@ -6,6 +6,7 @@ import {
   listSeasonsBySeriesFolderPath,
   updateSeries,
   upsertSeries,
+  deleteSeries,
 } from "@/lib/storage";
 import { getSeriesId, getSeriesTitle } from "@/lib/series";
 import type { Episode, Season, SeasonWithEpisodes, Series } from "@/lib/types";
@@ -257,4 +258,22 @@ export async function PATCH(
   };
 
   return NextResponse.json({ series, seasons: seasonsWithEpisodes });
+}
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ id?: string }> }
+) {
+  const { id } = await context.params;
+  if (!id) {
+    return NextResponse.json({ error: "id is required." }, { status: 400 });
+  }
+
+  const seriesFolderPath = getSeriesFolderPathById(id);
+  if (!seriesFolderPath) {
+    return NextResponse.json({ error: "Series not found." }, { status: 404 });
+  }
+
+  deleteSeries(id);
+  return new NextResponse(null, { status: 204 });
 }

@@ -2,21 +2,17 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Aperture, Home, Tv, Film, Clock, CheckCircle, Settings, HelpCircle, Shield } from "lucide-react";
+import { Aperture, Home, Tv, Film, Settings, HelpCircle, Shield } from "lucide-react";
 
 export function Sidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const typeParam = searchParams.get("type");
-  const sortParam = searchParams.get("sort");
-  const watchedParam = searchParams.get("watched");
 
   const navItems = [
-    { label: "Home", href: "/", icon: Home, isActive: pathname === "/" && !typeParam && sortParam !== "recent" && watchedParam !== "watched" },
+    { label: "Home", href: "/", icon: Home, isActive: pathname === "/" && !typeParam },
     { label: "TV Shows", href: "/?type=series", icon: Tv, isActive: typeParam === "series" },
     { label: "Movies", href: "/?type=movies", icon: Film, isActive: typeParam === "movies" },
-    { label: "Recently Added", href: "/?sort=recent", icon: Clock, isActive: sortParam === "recent" },
-    { label: "My List", href: "/?watched=watched", icon: CheckCircle, isActive: watchedParam === "watched" },
   ];
 
   return (
@@ -60,14 +56,6 @@ export function Sidebar() {
             <Settings className="h-4 w-4" />
             Change Path
           </Link>
-          <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface hover:text-foreground">
-            <HelpCircle className="h-4 w-4" />
-            FAQ
-          </button>
-          <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface hover:text-foreground">
-            <Shield className="h-4 w-4" />
-            Privacy
-          </button>
         </div>
       </div>
 

@@ -49,7 +49,11 @@ export function LibraryView() {
     const sortParam = searchParams.get("sort") as "title" | "rating" | "recent";
     const watchedParam = searchParams.get("watched") as "all" | "watched" | "unwatched";
     
-    if (typeParam && typeParam !== mediaType) setMediaType(typeParam);
+    if (typeParam) {
+      if (typeParam !== mediaType) setMediaType(typeParam);
+    } else if (mediaType !== "all") {
+      setMediaType("all");
+    }
     if (sortParam && sortParam !== sort) setSort(sortParam);
     if (watchedParam && watchedParam !== watched) setWatched(watchedParam);
   }, [searchParams]);
@@ -293,6 +297,23 @@ export function LibraryView() {
     return filtered;
   }, [movies, series, mediaType, sort, getTitle, getRating, getSyncedAt]);
 
+  const featuredMovieItem = useMemo(() => {
+    const eligibleMovies = movies.filter((m) => !m.xxxRated);
+    const eligibleSeries = series.filter(
+      (s) => s.seasons.length > 0 && !s.seasons[0].xxxRated
+    );
+    const combined: Array<
+      | { type: "movie"; movie: Movie }
+      | { type: "series"; series: Series }
+    > = [
+      ...eligibleMovies.map((movie) => ({ type: "movie" as const, movie })),
+      ...eligibleSeries.map((s) => ({ type: "series" as const, series: s })),
+    ];
+    if (combined.length === 0) return null;
+    const randomIndex = Math.floor(Math.random() * combined.length);
+    return combined[randomIndex];
+  }, [movies, series]);
+
   const hasFilters = query !== "" || genre !== "All" || person !== "" || minRating !== null;
   const showRows = !hasFilters && mediaType === "all" && sort === "rating";
 
@@ -377,33 +398,24 @@ export function LibraryView() {
         {items.length > 0 ? (
           showRows ? (
             <div className="flex flex-col w-full">
-              <HeroFeatured item={items[0]} onPlay={handlePlay} />
+              <HeroFeatured item={featuredMovieItem} onPlay={handlePlay} />
               
               <div className="flex flex-col gap-6 -mt-12 sm:-mt-24 relative z-20 pb-12">
                 <ContentRow 
-                  title="Continue Watching" 
-                  items={items.filter(i => i.type === "movie" ? i.movie.watched : i.series.seasons.some(s => s.watched)).slice(0, 20)}
+                  title="" 
+                  items={items.filter(i => i.type === "movie" ? !i.movie.watched : i.series.seasons.some(s => s.watched)).slice(0, 20)}
                   onPlayMovie={handlePlay}
                   onWatchedMovie={handleWatched}
                   blurXxxRated={true}
                 />
-                
-                <ContentRow 
-                  title="New Additions" 
-                  items={[...items].sort((a, b) => getSyncedAt(b) - getSyncedAt(a)).slice(0, 20)}
-                  onPlayMovie={handlePlay}
-                  onWatchedMovie={handleWatched}
-                  blurXxxRated={true}
-                />
-                
-                <ContentRow 
-                  title="Top Rated Movies" 
-                  items={items.filter(i => i.type === "movie").sort((a, b) => (getRating(b) || 0) - (getRating(a) || 0)).slice(0, 20)}
-                  onPlayMovie={handlePlay}
-                  onWatchedMovie={handleWatched}
-                  blurXxxRated={true}
-                />
-                
+
+              <ContentRow 
+                title="Top Rated Movies" 
+                items={items.filter(i => i.type === "movie").sort((a, b) => (getRating(b) || 0) - (getRating(a) || 0)).slice(0, 20)}
+                onPlayMovie={handlePlay}
+                onWatchedMovie={handleWatched}
+                blurXxxRated={true}
+              />
                 <ContentRow 
                   title="Top Rated TV Shows" 
                   items={items.filter(i => i.type === "series").sort((a, b) => (getRating(b) || 0) - (getRating(a) || 0)).slice(0, 20)}
