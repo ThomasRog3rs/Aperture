@@ -1,6 +1,6 @@
 # Aperture — The Tom Collection
 
-A local-first movie and TV library manager for macOS. It scans your disk, enriches metadata from OMDb/TMDB, and plays media in your default video player.
+A local-first movie and TV library manager for macOS, Linux, and Windows. It scans your disk, enriches metadata from OMDb/TMDB, and plays media in your default video player.
 
 ## Features
 
@@ -16,7 +16,7 @@ A local-first movie and TV library manager for macOS. It scans your disk, enrich
 
 ## Requirements
 
-- **macOS** — Uses `open` to launch the default video player.
+- **macOS, Linux, or Windows** — Uses your OS default player integration (`open`, `xdg-open`, or `start`) to launch videos. Only the macOS `open` command has been tested; if Play does not work on Linux or Windows, please open a [GitHub issue](https://github.com/thomasrog3rs/Aperture/issues) or submit a PR to fix it.
 - **Node.js 18+** — For the Next.js App Router app.
 - **OMDb API key** — For metadata (posters, cast, genres, etc.).
 
@@ -35,9 +35,12 @@ A local-first movie and TV library manager for macOS. It scans your disk, enrich
    ```bash
    OMDB_API_KEY="YOUR_OMDB_KEY"
    MAGNET_API_BASE_URL="http://localhost:8000"
+   # Optional override: darwin | linux | win32
+   APERTURE_OS="darwin"
    ```
 
    Get an API key at [OMDb](https://www.omdbapi.com/apikey.aspx).
+   If `APERTURE_OS` is not set, Aperture auto-detects the running OS.
 
 3. **Start the app**
 
