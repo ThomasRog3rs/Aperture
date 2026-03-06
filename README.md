@@ -2,6 +2,8 @@
 
 A local-first movie and TV library manager for macOS, Linux, and Windows. It scans your disk, enriches metadata from OMDb/TMDB, and plays media in your default video player.
 
+![Aperture screenshot](assets/Screenshot_2026-03-06_at_22.14.35-21ff6705-5d62-4dd9-8598-74678632f3d5.png)
+
 ## Features
 
 - **Movies** — One folder per movie; the largest video file is used. Metadata (poster, cast, genres, runtime, rating) is fetched from OMDb. You can rate titles (0–10), mark as watched, and play with one click.
