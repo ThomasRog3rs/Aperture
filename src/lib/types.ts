@@ -86,3 +86,30 @@ export type Episode = {
 
 export type SeasonWithEpisodes = Season & { episodes: Episode[] };
 
+export type MagnetApiRawResult = {
+  name?: string;
+  magnet?: string;
+  Seeders?: string;
+  Leechers?: string;
+  Size?: string;
+  Date?: string;
+  otherDetails?: {
+    category?: string;
+    uploader?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+};
+
+export type MagnetSearchResult = {
+  name: string;
+  magnet: string;
+  seeders: string | null;
+  leechers: string | null;
+  size: string | null;
+  date: string | null;
+  category: string | null;
+  uploader: string | null;
+  source: "pirate-bay";
+};
+

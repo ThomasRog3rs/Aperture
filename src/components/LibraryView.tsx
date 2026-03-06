@@ -3,13 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Clapperboard, FolderOpen, Loader2 } from "lucide-react";
-import { MovieGrid } from "@/components/MovieGrid";
-import { HeroFeatured } from "@/components/HeroFeatured";
 import { ContentRow } from "@/components/ContentRow";
-import { StatusBanner } from "@/components/StatusBanner";
+import { HeroFeatured } from "@/components/HeroFeatured";
+import { MagnetFallbackResults } from "@/components/MagnetFallbackResults";
 import { MainHeader } from "@/components/MainHeader";
+import { Modal } from "@/components/Modal";
+import { MovieGrid } from "@/components/MovieGrid";
+import { StatusBanner } from "@/components/StatusBanner";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import type { Movie, Series } from "@/lib/types";
+import type { MagnetSearchResult, Movie, Series } from "@/lib/types";
 
 type SyncSummary = {
   scanned: number;
@@ -27,11 +29,19 @@ type FilterOptionsResponse = {
   people: string[];
 };
 
+type MagnetSearchResponse = {
+  results: MagnetSearchResult[];
+  error?: string;
+};
+
 export function LibraryView() {
   const searchParams = useSearchParams();
-  const initialType = (searchParams.get("type") as "all" | "movies" | "series") || "all";
-  const initialSort = (searchParams.get("sort") as "title" | "rating" | "recent") || "rating";
-  const initialWatched = (searchParams.get("watched") as "all" | "watched" | "unwatched") || "all";
+  const initialType =
+    (searchParams.get("type") as "all" | "movies" | "series") || "all";
+  const initialSort =
+    (searchParams.get("sort") as "title" | "rating" | "recent") || "rating";
+  const initialWatched =
+    (searchParams.get("watched") as "all" | "watched" | "unwatched") || "all";
 
   const [movies, setMovies] = useState<Movie[]>([]);
   const [series, setSeries] = useState<Series[]>([]);
@@ -39,24 +49,14 @@ export function LibraryView() {
   const [genre, setGenre] = useState("All");
   const [person, setPerson] = useState("");
   const [minRating, setMinRating] = useState<number | null>(null);
-  const [watched, setWatched] = useState<"all" | "watched" | "unwatched">(initialWatched);
-  const [mediaType, setMediaType] = useState<"all" | "movies" | "series">(initialType);
+  const [watched, setWatched] = useState<"all" | "watched" | "unwatched">(
+    initialWatched
+  );
+  const [mediaType, setMediaType] = useState<"all" | "movies" | "series">(
+    initialType
+  );
   const [sort, setSort] = useState<"title" | "rating" | "recent">(initialSort);
   const [loading, setLoading] = useState(false);
-  
-  useEffect(() => {
-    const typeParam = searchParams.get("type") as "all" | "movies" | "series";
-    const sortParam = searchParams.get("sort") as "title" | "rating" | "recent";
-    const watchedParam = searchParams.get("watched") as "all" | "watched" | "unwatched";
-    
-    if (typeParam) {
-      if (typeParam !== mediaType) setMediaType(typeParam);
-    } else if (mediaType !== "all") {
-      setMediaType("all");
-    }
-    if (sortParam && sortParam !== sort) setSort(sortParam);
-    if (watchedParam && watchedParam !== watched) setWatched(watchedParam);
-  }, [searchParams]);
   const [syncing, setSyncing] = useState(false);
   const [notice, setNotice] = useState<{
     tone: "info" | "success" | "error";
@@ -65,6 +65,36 @@ export function LibraryView() {
   const [libraryRootPath, setLibraryRootPath] = useState<string | null>(null);
   const [availableGenres, setAvailableGenres] = useState<string[]>([]);
   const [availablePeople, setAvailablePeople] = useState<string[]>([]);
+  const [fallbackResults, setFallbackResults] = useState<MagnetSearchResult[]>(
+    []
+  );
+  const [fallbackLoading, setFallbackLoading] = useState(false);
+  const [fallbackError, setFallbackError] = useState<string | null>(null);
+  const [pendingMagnet, setPendingMagnet] =
+    useState<MagnetSearchResult | null>(null);
+
+  useEffect(() => {
+    const typeParam = searchParams.get("type") as
+      | "all"
+      | "movies"
+      | "series";
+    const sortParam = searchParams.get("sort") as
+      | "title"
+      | "rating"
+      | "recent";
+    const watchedParam = searchParams.get("watched") as
+      | "all"
+      | "watched"
+      | "unwatched";
+
+    if (typeParam) {
+      if (typeParam !== mediaType) setMediaType(typeParam);
+    } else if (mediaType !== "all") {
+      setMediaType("all");
+    }
+    if (sortParam && sortParam !== sort) setSort(sortParam);
+    if (watchedParam && watchedParam !== watched) setWatched(watchedParam);
+  }, [mediaType, searchParams, sort, watched]);
 
   const debouncedQuery = useDebouncedValue(query, 350);
 
@@ -102,7 +132,7 @@ export function LibraryView() {
     setMovies(moviesData.movies ?? []);
     setSeries(seriesData.series ?? []);
     setLoading(false);
-  }, [debouncedQuery, genre, person, minRating, watched, sort]);
+  }, [debouncedQuery, genre, minRating, person, sort, watched]);
 
   useEffect(() => {
     fetchSettings().catch(() => {
@@ -122,16 +152,6 @@ export function LibraryView() {
       setLoading(false);
     });
   }, [fetchLibrary]);
-
-  const lastSyncedAt = useMemo(() => {
-    const seasonTimestamps = series.flatMap((entry) =>
-      entry.seasons.map((season) => season.lastSyncedAt)
-    );
-    const timestamps = [...movies.map((entry) => entry.lastSyncedAt), ...seasonTimestamps]
-      .filter((value) => typeof value === "number");
-    if (timestamps.length === 0) return null;
-    return Math.max(...timestamps);
-  }, [movies, series]);
 
   const handleSync = useCallback(async () => {
     setSyncing(true);
@@ -185,11 +205,14 @@ export function LibraryView() {
     } finally {
       setSyncing(false);
     }
-  }, [fetchLibrary]);
+  }, [fetchFilterOptions, fetchLibrary]);
 
   const handlePlay = useCallback(async (movie: Movie) => {
     if (!movie.filePath) {
-      setNotice({ tone: "error", message: "File path missing for this movie." });
+      setNotice({
+        tone: "error",
+        message: "File path missing for this movie.",
+      });
       return;
     }
     try {
@@ -219,12 +242,17 @@ export function LibraryView() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ watched: watchedValue }),
       });
-      const data = (await response.json()) as { movie?: Movie; error?: string };
+      const data = (await response.json()) as {
+        movie?: Movie;
+        error?: string;
+      };
       if (!response.ok || !data.movie) {
         throw new Error(data.error || "Failed to update watched status.");
       }
       setMovies((prev) =>
-        prev.map((m) => (m.id === id ? { ...m, watched: watchedValue } : m))
+        prev.map((movie) =>
+          movie.id === id ? { ...movie, watched: watchedValue } : movie
+        )
       );
     } catch {
       setNotice({
@@ -234,8 +262,12 @@ export function LibraryView() {
     }
   }, []);
 
-  const getTitle = useCallback((entry: { type: "movie"; movie: Movie } | { type: "series"; series: Series }) =>
-    entry.type === "movie" ? entry.movie.titleClean : entry.series.titleClean, []);
+  const getTitle = useCallback(
+    (
+      entry: { type: "movie"; movie: Movie } | { type: "series"; series: Series }
+    ) => (entry.type === "movie" ? entry.movie.titleClean : entry.series.titleClean),
+    []
+  );
 
   const getSeriesRating = useCallback((entry: Series) => {
     const ratings = entry.seasons
@@ -245,20 +277,30 @@ export function LibraryView() {
     return Math.max(...ratings);
   }, []);
 
-  const getRating = useCallback((entry: { type: "movie"; movie: Movie } | { type: "series"; series: Series }) =>
-    entry.type === "movie"
-      ? entry.movie.tmdbRating
-      : getSeriesRating(entry.series), [getSeriesRating]);
+  const getRating = useCallback(
+    (
+      entry: { type: "movie"; movie: Movie } | { type: "series"; series: Series }
+    ) =>
+      entry.type === "movie"
+        ? entry.movie.tmdbRating
+        : getSeriesRating(entry.series),
+    [getSeriesRating]
+  );
 
   const getSeriesSyncedAt = useCallback((entry: Series) => {
     if (entry.seasons.length === 0) return 0;
     return Math.max(...entry.seasons.map((season) => season.lastSyncedAt));
   }, []);
 
-  const getSyncedAt = useCallback((entry: { type: "movie"; movie: Movie } | { type: "series"; series: Series }) =>
-    entry.type === "movie"
-      ? entry.movie.lastSyncedAt
-      : getSeriesSyncedAt(entry.series), [getSeriesSyncedAt]);
+  const getSyncedAt = useCallback(
+    (
+      entry: { type: "movie"; movie: Movie } | { type: "series"; series: Series }
+    ) =>
+      entry.type === "movie"
+        ? entry.movie.lastSyncedAt
+        : getSeriesSyncedAt(entry.series),
+    [getSeriesSyncedAt]
+  );
 
   const items = useMemo(() => {
     const merged: Array<
@@ -295,27 +337,109 @@ export function LibraryView() {
     });
 
     return filtered;
-  }, [movies, series, mediaType, sort, getTitle, getRating, getSyncedAt]);
+  }, [getRating, getSyncedAt, getTitle, mediaType, movies, series, sort]);
 
   const featuredMovieItem = useMemo(() => {
-    const eligibleMovies = movies.filter((m) => !m.xxxRated);
+    const eligibleMovies = movies.filter((movie) => !movie.xxxRated);
     const eligibleSeries = series.filter(
-      (s) => s.seasons.length > 0 && !s.seasons[0].xxxRated
+      (entry) => entry.seasons.length > 0 && !entry.seasons[0].xxxRated
     );
     const combined: Array<
       | { type: "movie"; movie: Movie }
       | { type: "series"; series: Series }
     > = [
       ...eligibleMovies.map((movie) => ({ type: "movie" as const, movie })),
-      ...eligibleSeries.map((s) => ({ type: "series" as const, series: s })),
+      ...eligibleSeries.map((entry) => ({ type: "series" as const, series: entry })),
     ];
     if (combined.length === 0) return null;
     const randomIndex = Math.floor(Math.random() * combined.length);
     return combined[randomIndex];
   }, [movies, series]);
 
-  const hasFilters = query !== "" || genre !== "All" || person !== "" || minRating !== null;
+  const activeQuery = debouncedQuery.trim();
+  const hasFilters =
+    query !== "" || genre !== "All" || person !== "" || minRating !== null;
+  const hasActiveConstraints =
+    hasFilters || watched !== "all" || mediaType !== "all";
   const showRows = !hasFilters && mediaType === "all" && sort === "rating";
+  const showMagnetFallback =
+    Boolean(libraryRootPath) &&
+    !loading &&
+    activeQuery.length > 0 &&
+    items.length === 0;
+
+  useEffect(() => {
+    if (!showMagnetFallback) {
+      setFallbackResults([]);
+      setFallbackLoading(false);
+      setFallbackError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    setFallbackLoading(true);
+    setFallbackError(null);
+
+    fetch(`/api/magnet-search?q=${encodeURIComponent(activeQuery)}`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const data = (await response.json()) as MagnetSearchResponse;
+        if (!response.ok) {
+          throw new Error(data.error || "Magnet search failed.");
+        }
+        if (!cancelled) {
+          setFallbackResults(data.results ?? []);
+        }
+      })
+      .catch((error) => {
+        if (cancelled || controller.signal.aborted) return;
+        setFallbackResults([]);
+        setFallbackError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load fallback results."
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setFallbackLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [activeQuery, showMagnetFallback]);
+
+  const handleCopyMagnet = useCallback(async (result: MagnetSearchResult) => {
+    try {
+      await navigator.clipboard.writeText(result.magnet);
+      setNotice({
+        tone: "success",
+        message: "Magnet link copied. Turn on your VPN before opening it.",
+      });
+    } catch {
+      setNotice({
+        tone: "error",
+        message: "Failed to copy magnet link.",
+      });
+    }
+  }, []);
+
+  const handleOpenMagnet = useCallback((result: MagnetSearchResult) => {
+    setPendingMagnet(result);
+  }, []);
+
+  const confirmOpenMagnet = useCallback(() => {
+    if (!pendingMagnet) return;
+    const magnet = pendingMagnet.magnet;
+    setPendingMagnet(null);
+    window.location.assign(magnet);
+  }, [pendingMagnet]);
 
   return (
     <div className="min-h-screen">
@@ -341,16 +465,19 @@ export function LibraryView() {
         libraryRootPath={libraryRootPath}
       />
 
-      <main className={`mx-auto flex w-full flex-col gap-6 ${showRows ? "max-w-none pb-8" : "max-w-6xl px-6 py-8 2xl:max-w-screen-2xl"}`}>
+      <main
+        className={`mx-auto flex w-full flex-col gap-6 ${showRows ? "max-w-none pb-8" : "max-w-6xl px-6 py-8 2xl:max-w-screen-2xl"}`}
+      >
         {notice ? (
           <div className={showRows ? "px-6 mt-4" : ""}>
             <StatusBanner tone={notice.tone} message={notice.message} />
           </div>
         ) : null}
 
-        {/* ── No library path configured ── */}
         {!libraryRootPath ? (
-          <div className={`flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border bg-surface p-12 text-center 2xl:p-16 ${showRows ? "mx-6 mt-6" : ""}`}>
+          <div
+            className={`flex flex-col items-center gap-4 rounded-2xl border border-dashed border-border bg-surface p-12 text-center 2xl:p-16 ${showRows ? "mx-6 mt-6" : ""}`}
+          >
             <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-accent-muted text-accent 2xl:h-16 2xl:w-16">
               <FolderOpen className="h-7 w-7 2xl:h-8 2xl:w-8" />
             </div>
@@ -366,20 +493,23 @@ export function LibraryView() {
           </div>
         ) : null}
 
-        {/* ── Loading ─────────────────────── */}
         {loading ? (
-          <div className={`flex items-center justify-center gap-3 rounded-2xl border border-border bg-surface p-10 text-sm text-muted 2xl:p-12 2xl:text-base ${showRows ? "mx-6 mt-6" : ""}`}>
+          <div
+            className={`flex items-center justify-center gap-3 rounded-2xl border border-border bg-surface p-10 text-sm text-muted 2xl:p-12 2xl:text-base ${showRows ? "mx-6 mt-6" : ""}`}
+          >
             <Loader2 className="h-5 w-5 animate-spin text-accent 2xl:h-6 2xl:w-6" />
             Loading your collection...
           </div>
         ) : null}
 
-        {/* ── Empty collection ────────────── */}
         {!loading &&
         libraryRootPath &&
+        !hasActiveConstraints &&
         movies.length === 0 &&
         series.length === 0 ? (
-          <div className={`flex flex-col items-center gap-4 rounded-2xl border border-border bg-surface p-12 text-center 2xl:p-16 ${showRows ? "mx-6 mt-6" : ""}`}>
+          <div
+            className={`flex flex-col items-center gap-4 rounded-2xl border border-border bg-surface p-12 text-center 2xl:p-16 ${showRows ? "mx-6 mt-6" : ""}`}
+          >
             <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-accent-muted text-accent 2xl:h-16 2xl:w-16">
               <Clapperboard className="h-7 w-7 2xl:h-8 2xl:w-8" />
             </div>
@@ -397,47 +527,120 @@ export function LibraryView() {
 
         {items.length > 0 ? (
           showRows ? (
-            <div className="flex flex-col w-full">
+            <div className="flex w-full flex-col">
               <HeroFeatured item={featuredMovieItem} onPlay={handlePlay} />
-              
-              <div className="flex flex-col gap-6 -mt-12 sm:-mt-24 relative z-20 pb-12">
-                <ContentRow 
-                  title="" 
-                  items={items.filter(i => i.type === "movie" ? !i.movie.watched : i.series.seasons.some(s => s.watched)).slice(0, 20)}
+
+              <div className="relative z-20 -mt-12 flex flex-col gap-6 pb-12 sm:-mt-24">
+                <ContentRow
+                  title=""
+                  items={items
+                    .filter((entry) =>
+                      entry.type === "movie"
+                        ? !entry.movie.watched
+                        : entry.series.seasons.some((season) => season.watched)
+                    )
+                    .slice(0, 20)}
                   onPlayMovie={handlePlay}
                   onWatchedMovie={handleWatched}
-                  blurXxxRated={true}
+                  blurXxxRated
                 />
 
-              <ContentRow 
-                title="Top Rated Movies" 
-                items={items.filter(i => i.type === "movie").sort((a, b) => (getRating(b) || 0) - (getRating(a) || 0)).slice(0, 20)}
-                onPlayMovie={handlePlay}
-                onWatchedMovie={handleWatched}
-                blurXxxRated={true}
-              />
-                <ContentRow 
-                  title="Top Rated TV Shows" 
-                  items={items.filter(i => i.type === "series").sort((a, b) => (getRating(b) || 0) - (getRating(a) || 0)).slice(0, 20)}
+                <ContentRow
+                  title="Top Rated Movies"
+                  items={items
+                    .filter((entry) => entry.type === "movie")
+                    .sort((a, b) => (getRating(b) || 0) - (getRating(a) || 0))
+                    .slice(0, 20)}
                   onPlayMovie={handlePlay}
                   onWatchedMovie={handleWatched}
-                  blurXxxRated={true}
+                  blurXxxRated
+                />
+                <ContentRow
+                  title="Top Rated TV Shows"
+                  items={items
+                    .filter((entry) => entry.type === "series")
+                    .sort((a, b) => (getRating(b) || 0) - (getRating(a) || 0))
+                    .slice(0, 20)}
+                  onPlayMovie={handlePlay}
+                  onWatchedMovie={handleWatched}
+                  blurXxxRated
                 />
               </div>
             </div>
           ) : (
             <MovieGrid
-              key={items.map((entry) =>
-                entry.type === "movie" ? entry.movie.id : entry.series.id
-              ).join(",")}
+              key={items
+                .map((entry) =>
+                  entry.type === "movie" ? entry.movie.id : entry.series.id
+                )
+                .join(",")}
               items={items}
               onPlayMovie={handlePlay}
               onWatchedMovie={handleWatched}
-              blurXxxRated={true}
+              blurXxxRated
             />
           )
         ) : null}
+
+        {!loading && libraryRootPath && items.length === 0 && hasActiveConstraints ? (
+          showMagnetFallback ? (
+            <MagnetFallbackResults
+              query={activeQuery}
+              results={fallbackResults}
+              loading={fallbackLoading}
+              error={fallbackError}
+              onOpen={handleOpenMagnet}
+              onCopy={handleCopyMagnet}
+            />
+          ) : (
+            <div
+              className={`rounded-2xl border border-border bg-surface p-12 text-center 2xl:p-16 ${showRows ? "mx-6 mt-6" : ""}`}
+            >
+              <p className="font-serif text-lg font-medium text-foreground 2xl:text-xl">
+                No local matches
+              </p>
+              <p className="mt-1 text-sm text-muted 2xl:text-base">
+                Try a broader search or clear some filters.
+              </p>
+            </div>
+          )
+        ) : null}
       </main>
+
+      <Modal
+        isOpen={pendingMagnet !== null}
+        onClose={() => setPendingMagnet(null)}
+        title="VPN reminder"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            Turn on your VPN before opening magnet links.
+          </p>
+          {pendingMagnet ? (
+            <div className="rounded-xl border border-border bg-background p-4">
+              <p className="text-sm font-medium text-foreground">
+                {pendingMagnet.name}
+              </p>
+            </div>
+          ) : null}
+          <div className="flex flex-wrap justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setPendingMagnet(null)}
+              className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmOpenMagnet}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover"
+            >
+              I&apos;m on VPN
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
