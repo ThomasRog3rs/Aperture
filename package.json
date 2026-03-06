@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "docker start magnetapi 2>/dev/null || docker run -d --name magnetapi -p 8000:8000 ghcr.io/thomasrog3rs/magnetapi:v0.1",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
