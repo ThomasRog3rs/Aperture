@@ -61,6 +61,7 @@ export async function GET(request: Request) {
     }
 
     if (!Array.isArray(payload)) {
+      console.error("MagnetAPI returned an unexpected response.", payload);
       if (isNoDataMessage(message)) {
         return NextResponse.json({ results: [] satisfies MagnetSearchResult[] });
       }

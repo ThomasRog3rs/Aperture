@@ -35,6 +35,7 @@ yarn-error.log*
 
 # local app data
 /data
+/.cursor
 
 # vercel
 .vercel

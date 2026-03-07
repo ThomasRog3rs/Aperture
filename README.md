@@ -13,7 +13,7 @@ A local-first movie and TV library manager for macOS, Linux, and Windows. It sca
 - **Personal ratings & watched** — Rate movies and seasons (0–10). Mark movies or individual episodes as watched; filter the library by watched/unwatched.
 - **Folder images** — Use custom artwork by placing an image (e.g. `poster.jpg`, `cover.png`, `folder.jpg`) inside a movie or series folder. The app prefers names like `poster`, `cover`, `folder`, `front`. Supported: `.jpg`, `.jpeg`, `.png`, `.webp`, `.avif`.
 - **Refresh poster** — On a movie or series/season detail page, use “Refresh poster” to re-fetch poster/backdrop from OMDb and update the stored art.
-- **MagnetAPI fallback** — When the main search finds no local movies or TV results, Aperture can query MagnetAPI (Pirate Bay) and show magnet links. Enable VPN before opening links; the app reminds you.
+- **MagnetAPI fallback** — When the main search finds no local movies or TV results, Aperture can query MagnetAPI (Pirate Bay) and show magnet links. MagnetAPI lookups require an active VPN connection.
 - **Settings** — Set the library root path (single folder that contains all your movie and TV show folders).
 
 ## Requirements
@@ -145,6 +145,10 @@ Another valid style:
 
 When the top search bar returns no local movie or TV results, Aperture can query MagnetAPI for Pirate Bay video results and show magnet links.
 
+MagnetAPI repository: [ThomasRog3rs/MagnetAPI](https://github.com/ThomasRog3rs/MagnetAPI)
+
+**VPN required:** MagnetAPI requests generally fail without an active VPN connection. If VPN is off, fallback search may return no results or request errors.
+
 - **`npm run dev`** starts the MagnetAPI container automatically (via the `predev` script). Ensure Docker is running; the first run may pull the image.
 - Optional manual setup:
   1. Pull: `docker pull ghcr.io/thomasrog3rs/magnetapi:v0.1`
@@ -152,7 +156,7 @@ When the top search bar returns no local movie or TV results, Aperture can query
   3. Set in `.env.local`: `MAGNET_API_BASE_URL="http://localhost:8000"`
 - Verify: `curl "http://localhost:8000/pirate-bay/inception/video"`
 
-**Important:** Turn on your VPN before opening magnet links. The app will remind you.
+**Important:** Keep your VPN on for both MagnetAPI search requests and opening magnet links. The app will remind you.
 
 ## Data storage
 
