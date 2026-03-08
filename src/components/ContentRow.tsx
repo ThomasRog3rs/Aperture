@@ -39,10 +39,12 @@ export function ContentRow({
   if (items.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-3 py-4 w-full">
-      <h2 className="px-6 lg:px-12 text-xl font-bold tracking-tight text-foreground">
-        {title}
-      </h2>
+    <div className={`flex flex-col w-full ${title ? "gap-3 py-4" : "pt-0 pb-4"}`}>
+      {title ? (
+        <h2 className="px-6 lg:px-12 text-xl font-bold tracking-tight text-foreground">
+          {title}
+        </h2>
+      ) : null}
       <div className="group relative w-full">
         {/* Left Arrow */}
         <button

@@ -356,6 +356,38 @@ export function LibraryView() {
     return combined[randomIndex];
   }, [movies, series]);
 
+  const unwatchedCarouselItems = useMemo(() => {
+    const RESERVOIR_SIZE = 15;
+    type Entry =
+      | { type: "movie"; movie: Movie }
+      | { type: "series"; series: Series };
+
+    const isUnwatched = (entry: Entry): boolean =>
+      entry.type === "movie"
+        ? !entry.movie.watched
+        : !entry.series.seasons.some((s) => s.watched);
+
+    const isXxxRated = (entry: Entry): boolean =>
+      entry.type === "movie"
+        ? entry.movie.xxxRated
+        : entry.series.seasons.some((s) => s.xxxRated);
+
+    const reservoir: Entry[] = [];
+    let unwatchedCount = 0;
+
+    for (const entry of items) {
+      if (isXxxRated(entry) || !isUnwatched(entry)) continue;
+      unwatchedCount++;
+      if (reservoir.length < RESERVOIR_SIZE) {
+        reservoir.push(entry);
+      } else {
+        const r = Math.floor(Math.random() * unwatchedCount);
+        if (r < RESERVOIR_SIZE) reservoir[r] = entry;
+      }
+    }
+    return reservoir;
+  }, [items]);
+
   const activeQuery = debouncedQuery.trim();
   const hasFilters =
     query !== "" || genre !== "All" || person !== "" || minRating !== null;
@@ -530,40 +562,41 @@ export function LibraryView() {
             <div className="flex w-full flex-col">
               <HeroFeatured item={featuredMovieItem} onPlay={handlePlay} />
 
-              <div className="relative z-20 -mt-12 flex flex-col gap-6 pb-12 sm:-mt-24">
+              <div className="relative z-20 mt-10 flex flex-col gap-10 pb-16 sm:mt-14">
                 <ContentRow
                   title=""
-                  items={items
-                    .filter((entry) =>
-                      entry.type === "movie"
-                        ? !entry.movie.watched
-                        : entry.series.seasons.some((season) => season.watched)
-                    )
-                    .slice(0, 20)}
+                  items={unwatchedCarouselItems}
                   onPlayMovie={handlePlay}
                   onWatchedMovie={handleWatched}
-                  blurXxxRated
+                  blurXxxRated={false}
                 />
 
                 <ContentRow
                   title="Top Rated Movies"
                   items={items
-                    .filter((entry) => entry.type === "movie")
+                    .filter(
+                      (entry) =>
+                        entry.type === "movie" && !entry.movie.xxxRated
+                    )
                     .sort((a, b) => (getRating(b) || 0) - (getRating(a) || 0))
                     .slice(0, 20)}
                   onPlayMovie={handlePlay}
                   onWatchedMovie={handleWatched}
-                  blurXxxRated
+                  blurXxxRated={false}
                 />
                 <ContentRow
                   title="Top Rated TV Shows"
                   items={items
-                    .filter((entry) => entry.type === "series")
+                    .filter(
+                      (entry) =>
+                        entry.type === "series" &&
+                        !entry.series.seasons.some((s) => s.xxxRated)
+                    )
                     .sort((a, b) => (getRating(b) || 0) - (getRating(a) || 0))
                     .slice(0, 20)}
                   onPlayMovie={handlePlay}
                   onWatchedMovie={handleWatched}
-                  blurXxxRated
+                  blurXxxRated={false}
                 />
               </div>
             </div>
