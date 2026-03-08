@@ -562,7 +562,7 @@ export function LibraryView() {
             <div className="flex w-full flex-col">
               <HeroFeatured item={featuredMovieItem} onPlay={handlePlay} />
 
-              <div className="relative z-20 mt-10 flex flex-col gap-10 pb-16 sm:mt-14">
+              <div className="relative z-20 mt-10 flex w-full max-w-7xl mx-auto flex-col gap-6 pb-16 sm:mt-14 px-6 lg:px-12 2xl:px-16">
                 <ContentRow
                   title=""
                   items={unwatchedCarouselItems}

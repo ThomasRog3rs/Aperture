@@ -41,7 +41,7 @@ export function ContentRow({
   return (
     <div className={`flex flex-col w-full ${title ? "gap-3 py-4" : "pt-0 pb-4"}`}>
       {title ? (
-        <h2 className="px-6 lg:px-12 text-xl font-bold tracking-tight text-foreground">
+        <h2 className="text-xl font-bold tracking-tight text-foreground">
           {title}
         </h2>
       ) : null}
@@ -49,7 +49,7 @@ export function ContentRow({
         {/* Left Arrow */}
         <button
           onClick={() => handleScroll("left")}
-          className="absolute left-0 top-0 bottom-0 z-20 w-12 lg:w-16 bg-gradient-to-r from-background to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-start px-2 lg:px-4 text-white disabled:opacity-0"
+          className="absolute left-0 top-0 bottom-0 z-20 w-12 lg:w-16 bg-gradient-to-r from-background to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-start px-2 lg:px-4 text-white disabled:opacity-0 -ml-2 lg:-ml-4"
           aria-label="Scroll left"
         >
           <ChevronLeft className="h-8 w-8 drop-shadow-md transition-transform hover:scale-125" />
@@ -58,7 +58,7 @@ export function ContentRow({
         {/* Scroll Container */}
         <div
           ref={rowRef}
-          className="flex gap-4 overflow-x-auto overflow-y-visible px-6 lg:px-12 pb-8 pt-4 scrollbar-hide snap-x snap-mandatory"
+          className="flex gap-4 overflow-x-auto overflow-y-visible pb-8 pt-4 scrollbar-hide snap-x snap-mandatory"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
           {items.map((entry) => (
@@ -99,7 +99,7 @@ export function ContentRow({
         {/* Right Arrow */}
         <button
           onClick={() => handleScroll("right")}
-          className="absolute right-0 top-0 bottom-0 z-20 w-12 lg:w-16 bg-gradient-to-l from-background to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-end px-2 lg:px-4 text-white"
+          className="absolute right-0 top-0 bottom-0 z-20 w-12 lg:w-16 bg-gradient-to-l from-background to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-end px-2 lg:px-4 text-white -mr-2 lg:-mr-4"
           aria-label="Scroll right"
         >
           <ChevronRight className="h-8 w-8 drop-shadow-md transition-transform hover:scale-125" />

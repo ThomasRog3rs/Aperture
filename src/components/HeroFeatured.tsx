@@ -46,7 +46,7 @@ export function HeroFeatured({ item, onPlay }: HeroFeaturedProps) {
       )}
 
       {/* Content */}
-      <div className="relative z-10 w-full px-6 lg:px-12 max-w-7xl mx-auto flex flex-col gap-4 sm:gap-6">
+      <div className="relative z-10 w-full px-6 lg:px-12 2xl:px-16 max-w-7xl mx-auto flex flex-col gap-4 sm:gap-6">
         <h1 className="text-4xl sm:text-5xl lg:text-7xl font-bold tracking-tight text-white max-w-3xl drop-shadow-lg">
           {title}
         </h1>
