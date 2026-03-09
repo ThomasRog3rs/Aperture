@@ -3,6 +3,7 @@ import { cleanTitle } from "@/lib/cleanTitle";
 
 const SEASON_FOLDER_REGEXES = [
   /season[\s._-]*(\d{1,2})/i,
+  /series[\s._-]*(\d{1,2})/i,
   /\bS(\d{1,2})\b/i,
   /^(\d{1,2})$/,
 ];
@@ -21,8 +22,9 @@ function normalizeNumber(value: string | undefined) {
 }
 
 export function parseSeasonNumberFromFolder(folderName: string): number | null {
+  const trimmed = folderName.trim();
   for (const regex of SEASON_FOLDER_REGEXES) {
-    const match = folderName.match(regex);
+    const match = trimmed.match(regex);
     if (!match) continue;
     const parsed = normalizeNumber(match[1]);
     if (parsed === null) continue;
