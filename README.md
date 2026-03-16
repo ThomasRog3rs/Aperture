@@ -8,13 +8,13 @@ A local-first movie and TV library manager for macOS, Linux, and Windows. It sca
 
 - **Movies** — One folder per movie; the largest video file is used. Metadata (poster, cast, genres, runtime, rating) is fetched from OMDb. You can rate titles (0–10), mark as watched, and play with one click.
 - **TV series** — Organise shows as **Show folder → Season folders → episode files**. Seasons are detected by folder names (`Season 1`, `S1`, `1`); episodes by filenames (`S01E01`, `1x01`, `E01`, `101`). Each season gets OMDb metadata; episodes are listed with optional watched state.
-- **Library sync** — **Sync Library** scans your library path, discovers movies and series, matches them to OMDb, and stores everything in a local SQLite database. Re-run sync to pick up new or changed folders.
+- **Library sync** — **Sync Library** scans your library path, discovers movies and series, matches them to OMDb, and stores everything in a local SQLite database. Re-run sync to pick up new or changed folders. Any movie or TV season that is no longer found on disk is automatically **marked as deleted** and hidden from the library. Deleted items are retained in the database (so ratings and watched state are preserved) until you purge them from Settings.
 - **Search & filters** — Search by title; filter by genre, cast/director/writer, personal rating (min), and watched status. Sort by rating, recently synced, or title. Switch between All, Movies, and TV Shows in the sidebar.
 - **Personal ratings & watched** — Rate movies and seasons (0–10). Mark movies or individual episodes as watched; filter the library by watched/unwatched.
 - **Folder images** — Use custom artwork by placing an image (e.g. `poster.jpg`, `cover.png`, `folder.jpg`) inside a movie or series folder. The app prefers names like `poster`, `cover`, `folder`, `front`. Supported: `.jpg`, `.jpeg`, `.png`, `.webp`, `.avif`.
 - **Refresh poster** — On a movie or series/season detail page, use “Refresh poster” to re-fetch poster/backdrop from OMDb and update the stored art.
 - **MagnetAPI fallback** — When the main search finds no local movies or TV results, Aperture can query MagnetAPI (Pirate Bay) and show magnet links. MagnetAPI lookups require an active VPN connection.
-- **Settings** — Set the library root path (single folder that contains all your movie and TV show folders).
+- **Settings** — Set the library root path (single folder that contains all your movie and TV show folders). The Settings page also shows a count of soft-deleted items (movies, seasons, episodes removed from disk) and lets you permanently **purge** them from the database.
 
 ## Requirements
 
@@ -163,9 +163,9 @@ MagnetAPI repository: [ThomasRog3rs/MagnetAPI](https://github.com/ThomasRog3rs/M
 Local data is stored in SQLite at `data/aperture.db`:
 
 - Settings (library path)
-- Movies: paths, OMDb metadata, personal rating, watched
-- Seasons: per-season metadata, rating, watched
-- Episodes: file paths, episode numbers, watched
+- Movies: paths, OMDb metadata, personal rating, watched, soft-delete timestamp
+- Seasons: per-season metadata, rating, watched, soft-delete timestamp
+- Episodes: file paths, episode numbers, watched, soft-delete timestamp
 - Series: derived from season folder paths; optional custom title/poster
 
 ## Notes

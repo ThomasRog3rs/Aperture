@@ -6,11 +6,15 @@ import { scanLibrary } from "@/lib/scan";
 import { resolveOmdbMovie, resolveOmdbSeries } from "@/lib/omdb";
 import {
   countEpisodesBySeasonId,
-  deleteEpisodesNotInSeason,
-  deleteSeasonById,
+  getAllMovieFolderPaths,
+  getAllSeasonFolderPaths,
   getMovieById,
   getSeasonById,
   getSetting,
+  markEpisodesDeletedNotInSeason,
+  markMoviesDeleted,
+  markSeasonDeleted,
+  markSeasonsDeleted,
   upsertEpisode,
   upsertMovie,
   upsertSeason,
@@ -67,6 +71,12 @@ export async function POST() {
   let seasonsUpdated = 0;
   let seasonsNotFound = 0;
   let seasonsErrors = 0;
+  let moviesDeleted = 0;
+  let seasonsDeleted = 0;
+
+  // Capture existing DB folder paths before processing so we can detect removals.
+  const existingMovieFolderPaths = new Set(getAllMovieFolderPaths());
+  const existingSeasonFolderPaths = new Set(getAllSeasonFolderPaths());
 
   for (const entry of scanned.movies) {
     const id = crypto
@@ -164,6 +174,16 @@ export async function POST() {
     });
 
     updated += 1;
+  }
+
+  // Soft-delete any movies that were in the DB but not found on disk this sync.
+  const scannedMovieFolderPaths = new Set(scanned.movies.map((m) => m.folderPath));
+  const missingMovieFolderPaths = [...existingMovieFolderPaths].filter(
+    (p) => !scannedMovieFolderPaths.has(p)
+  );
+  if (missingMovieFolderPaths.length > 0) {
+    markMoviesDeleted(missingMovieFolderPaths);
+    moviesDeleted = missingMovieFolderPaths.length;
   }
 
   for (const season of scanned.seasons) {
@@ -283,13 +303,23 @@ export async function POST() {
       });
     }
 
-    deleteEpisodesNotInSeason(id, episodeFilePaths);
+    markEpisodesDeletedNotInSeason(id, episodeFilePaths);
     const episodeCount = countEpisodesBySeasonId(id);
     if (episodeCount === 0 && !errorMessage) {
-      deleteSeasonById(id);
+      markSeasonDeleted(id);
     } else {
       seasonsUpdated += 1;
     }
+  }
+
+  // Soft-delete any seasons that were in the DB but not found on disk this sync.
+  const scannedSeasonFolderPaths = new Set(scanned.seasons.map((s) => s.seasonFolderPath));
+  const missingSeasonFolderPaths = [...existingSeasonFolderPaths].filter(
+    (p) => !scannedSeasonFolderPaths.has(p)
+  );
+  if (missingSeasonFolderPaths.length > 0) {
+    markSeasonsDeleted(missingSeasonFolderPaths);
+    seasonsDeleted = missingSeasonFolderPaths.length;
   }
 
   return NextResponse.json({
@@ -298,12 +328,14 @@ export async function POST() {
       updated,
       notFound,
       errors,
+      deleted: moviesDeleted,
     },
     seasons: {
       scanned: scanned.seasons.length,
       updated: seasonsUpdated,
       notFound: seasonsNotFound,
       errors: seasonsErrors,
+      deleted: seasonsDeleted,
     },
   });
 }
