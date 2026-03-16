@@ -103,9 +103,6 @@ export function MainHeader({
               <div className="hidden h-8 w-8 items-center justify-center rounded-full bg-surface-strong sm:flex">
                 <User className="h-4 w-4 text-muted" />
               </div>
-              <span className="hidden lg:inline-block">
-                {libraryRootPath ? libraryRootPath.split("/").pop() : "No Library"}
-              </span>
             </div>
           </div>
         </div>
