@@ -18,6 +18,7 @@ type SyncSummary = {
   updated: number;
   notFound: number;
   errors: number;
+  deleted?: number;
 };
 
 type SettingsResponse = {
@@ -176,17 +177,20 @@ export function LibraryView() {
               updated: data.movies.updated + data.seasons.updated,
               notFound: data.movies.notFound + data.seasons.notFound,
               errors: data.movies.errors + data.seasons.errors,
+              deleted: (data.movies.deleted ?? 0) + (data.seasons.deleted ?? 0),
               label: `${data.movies.updated} movies, ${data.seasons.updated} seasons`,
             }
           : {
               updated: data.updated,
               notFound: data.notFound,
               errors: data.errors,
+              deleted: data.deleted ?? 0,
               label: `${data.updated} movies`,
             };
+      const deletedPart = summary.deleted > 0 ? `, ${summary.deleted} deleted` : "";
       setNotice({
         tone: summary.errors > 0 ? "error" : "success",
-        message: `Synced ${summary.label} (${summary.notFound} not found, ${summary.errors} errors).`,
+        message: `Synced ${summary.label} (${summary.notFound} not found${deletedPart}, ${summary.errors} errors).`,
       });
       await fetchLibrary();
       fetchFilterOptions().catch(() => {

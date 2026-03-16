@@ -48,7 +48,8 @@ function ensureSchema(db: DbInstance) {
       errorMessage TEXT NULL,
       lastSyncedAt INTEGER NOT NULL,
       xxxRated INTEGER NOT NULL DEFAULT 0,
-      watched INTEGER NOT NULL DEFAULT 0
+      watched INTEGER NOT NULL DEFAULT 0,
+      deletedAt INTEGER NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_movies_tmdb_id ON movies (tmdbId);
@@ -77,7 +78,8 @@ function ensureSchema(db: DbInstance) {
       errorMessage TEXT NULL,
       lastSyncedAt INTEGER NOT NULL,
       xxxRated INTEGER NOT NULL DEFAULT 0,
-      watched INTEGER NOT NULL DEFAULT 0
+      watched INTEGER NOT NULL DEFAULT 0,
+      deletedAt INTEGER NULL
     );
 
     CREATE TABLE IF NOT EXISTS series (
@@ -107,7 +109,8 @@ function ensureSchema(db: DbInstance) {
       filePath TEXT NOT NULL,
       fileSizeBytes INTEGER NOT NULL,
       lastSyncedAt INTEGER NOT NULL,
-      watched INTEGER NOT NULL DEFAULT 0
+      watched INTEGER NOT NULL DEFAULT 0,
+      deletedAt INTEGER NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_seasons_tmdb_id ON seasons (tmdbId);
@@ -142,6 +145,9 @@ function ensureSchema(db: DbInstance) {
   if (!columnNames.has("watched")) {
     db.exec("ALTER TABLE movies ADD COLUMN watched INTEGER NOT NULL DEFAULT 0");
   }
+  if (!columnNames.has("deletedAt")) {
+    db.exec("ALTER TABLE movies ADD COLUMN deletedAt INTEGER NULL");
+  }
 
   const seasonCols = db
     .prepare("PRAGMA table_info(seasons)")
@@ -155,6 +161,9 @@ function ensureSchema(db: DbInstance) {
   }
   if (!seasonColNames.has("actorsJson")) {
     db.exec("ALTER TABLE seasons ADD COLUMN actorsJson TEXT NOT NULL DEFAULT '[]'");
+  }
+  if (!seasonColNames.has("deletedAt")) {
+    db.exec("ALTER TABLE seasons ADD COLUMN deletedAt INTEGER NULL");
   }
 
   const seriesCols = db
@@ -177,6 +186,9 @@ function ensureSchema(db: DbInstance) {
   const episodeColNames = new Set(episodeCols.map((c) => c.name));
   if (!episodeColNames.has("watched")) {
     db.exec("ALTER TABLE episodes ADD COLUMN watched INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!episodeColNames.has("deletedAt")) {
+    db.exec("ALTER TABLE episodes ADD COLUMN deletedAt INTEGER NULL");
   }
 }
 

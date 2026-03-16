@@ -208,7 +208,8 @@ export function upsertMovie(movie: MovieUpsert) {
       youtubeTrailerKey = excluded.youtubeTrailerKey,
       personalRating = excluded.personalRating,
       errorMessage = excluded.errorMessage,
-      lastSyncedAt = excluded.lastSyncedAt
+      lastSyncedAt = excluded.lastSyncedAt,
+      deletedAt = NULL
   `
   ).run({
     ...movie,
@@ -292,7 +293,8 @@ export function upsertSeason(season: SeasonUpsert) {
       errorMessage = excluded.errorMessage,
       lastSyncedAt = excluded.lastSyncedAt,
       xxxRated = excluded.xxxRated,
-      watched = excluded.watched
+      watched = excluded.watched,
+      deletedAt = NULL
     `
   ).run({
     ...season,
@@ -334,7 +336,8 @@ export function upsertEpisode(episode: EpisodeUpsert) {
       titleClean = excluded.titleClean,
       filePath = excluded.filePath,
       fileSizeBytes = excluded.fileSizeBytes,
-      lastSyncedAt = excluded.lastSyncedAt
+      lastSyncedAt = excluded.lastSyncedAt,
+      deletedAt = NULL
     `
   ).run(episode);
 }
@@ -437,6 +440,8 @@ export function listMovies(query: MovieQuery): MovieRow[] {
     where.push("watched = 0");
   }
 
+  where.push("deletedAt IS NULL");
+
   const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
 
   let orderBy = "titleClean ASC";
@@ -491,6 +496,8 @@ export function listSeasons(query: SeasonQuery): SeasonRow[] {
     where.push("watched = 0");
   }
 
+  where.push("deletedAt IS NULL");
+
   const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
 
   let orderBy = "titleClean ASC";
@@ -520,6 +527,7 @@ export function listSeasonsBySeriesFolderPath(
       SELECT *
       FROM seasons
       WHERE seriesFolderPath = ?
+      AND deletedAt IS NULL
       ORDER BY
         CASE WHEN seasonNumber IS NULL THEN 1 ELSE 0 END,
         seasonNumber ASC,
@@ -532,7 +540,7 @@ export function listSeasonsBySeriesFolderPath(
 export function listSeriesFolderPaths(): string[] {
   const db = getDb();
   const rows = db
-    .prepare("SELECT DISTINCT seriesFolderPath FROM seasons")
+    .prepare("SELECT DISTINCT seriesFolderPath FROM seasons WHERE deletedAt IS NULL")
     .all() as Array<{ seriesFolderPath: string }>;
   return rows.map((row) => row.seriesFolderPath);
 }
@@ -550,9 +558,9 @@ export function listGenres(): string[] {
   const rows = db
     .prepare(
       `
-      SELECT genresJson, userGenresJson FROM movies
+      SELECT genresJson, userGenresJson FROM movies WHERE deletedAt IS NULL
       UNION ALL
-      SELECT genresJson, userGenresJson FROM seasons
+      SELECT genresJson, userGenresJson FROM seasons WHERE deletedAt IS NULL
       `
     )
     .all() as { genresJson: string | null; userGenresJson: string | null }[];
@@ -594,9 +602,9 @@ export function listPeople(): {
   const rows = db
     .prepare(
       `
-      SELECT directorsJson, writersJson, actorsJson FROM movies
+      SELECT directorsJson, writersJson, actorsJson FROM movies WHERE deletedAt IS NULL
       UNION ALL
-      SELECT directorsJson, writersJson, actorsJson FROM seasons
+      SELECT directorsJson, writersJson, actorsJson FROM seasons WHERE deletedAt IS NULL
       `
     )
     .all() as Array<{
@@ -814,6 +822,7 @@ export function getEpisodesBySeasonId(seasonId: string): EpisodeRow[] {
       SELECT *
       FROM episodes
       WHERE seasonId = ?
+      AND deletedAt IS NULL
       ORDER BY
         CASE WHEN episodeNumber IS NULL THEN 1 ELSE 0 END,
         episodeNumber ASC,
@@ -826,7 +835,7 @@ export function getEpisodesBySeasonId(seasonId: string): EpisodeRow[] {
 export function countEpisodesBySeasonId(seasonId: string): number {
   const db = getDb();
   const row = db
-    .prepare("SELECT COUNT(*) as count FROM episodes WHERE seasonId = ?")
+    .prepare("SELECT COUNT(*) as count FROM episodes WHERE seasonId = ? AND deletedAt IS NULL")
     .get(seasonId) as { count: number } | undefined;
   return row?.count ?? 0;
 }
@@ -842,6 +851,7 @@ export function getEpisodeCountsBySeasonIds(seasonIds: string[]): Map<string, nu
       SELECT seasonId, COUNT(*) as count
       FROM episodes
       WHERE seasonId IN (${placeholders})
+      AND deletedAt IS NULL
       GROUP BY seasonId
       `
     )
@@ -877,22 +887,122 @@ export function updateEpisode(id: string, updates: EpisodeUpdate) {
   db.prepare(`UPDATE episodes SET ${setClauses} WHERE id = @id`).run(params);
 }
 
-export function deleteEpisodesNotInSeason(
+export function markEpisodesDeletedNotInSeason(
   seasonId: string,
   filePaths: string[]
 ) {
   const db = getDb();
+  const now = Date.now();
   if (filePaths.length === 0) {
-    db.prepare("DELETE FROM episodes WHERE seasonId = ?").run(seasonId);
+    db.prepare(
+      "UPDATE episodes SET deletedAt = ? WHERE seasonId = ? AND deletedAt IS NULL"
+    ).run(now, seasonId);
     return;
   }
   const placeholders = filePaths.map(() => "?").join(", ");
   db.prepare(
     `
-    DELETE FROM episodes
+    UPDATE episodes
+    SET deletedAt = ?
     WHERE seasonId = ?
     AND filePath NOT IN (${placeholders})
+    AND deletedAt IS NULL
     `
-  ).run(seasonId, ...filePaths);
+  ).run(now, seasonId, ...filePaths);
+}
+
+export function getAllMovieFolderPaths(): string[] {
+  const db = getDb();
+  const rows = db
+    .prepare("SELECT folderPath FROM movies WHERE deletedAt IS NULL")
+    .all() as Array<{ folderPath: string }>;
+  return rows.map((row) => row.folderPath);
+}
+
+export function getAllSeasonFolderPaths(): string[] {
+  const db = getDb();
+  const rows = db
+    .prepare("SELECT seasonFolderPath FROM seasons WHERE deletedAt IS NULL")
+    .all() as Array<{ seasonFolderPath: string }>;
+  return rows.map((row) => row.seasonFolderPath);
+}
+
+export function markMoviesDeleted(folderPaths: string[]) {
+  if (folderPaths.length === 0) return;
+  const db = getDb();
+  const now = Date.now();
+  const placeholders = folderPaths.map(() => "?").join(", ");
+  db.prepare(
+    `UPDATE movies SET deletedAt = ? WHERE folderPath IN (${placeholders}) AND deletedAt IS NULL`
+  ).run(now, ...folderPaths);
+}
+
+export function markSeasonsDeleted(seasonFolderPaths: string[]) {
+  if (seasonFolderPaths.length === 0) return;
+  const db = getDb();
+  const now = Date.now();
+  const placeholders = seasonFolderPaths.map(() => "?").join(", ");
+  db.prepare(
+    `UPDATE seasons SET deletedAt = ? WHERE seasonFolderPath IN (${placeholders}) AND deletedAt IS NULL`
+  ).run(now, ...seasonFolderPaths);
+}
+
+export function markSeasonDeleted(id: string) {
+  const db = getDb();
+  db.prepare(
+    "UPDATE seasons SET deletedAt = ? WHERE id = ? AND deletedAt IS NULL"
+  ).run(Date.now(), id);
+}
+
+export function countDeletedItems(): {
+  movies: number;
+  seasons: number;
+  episodes: number;
+  total: number;
+} {
+  const db = getDb();
+  const movies = (
+    db.prepare("SELECT COUNT(*) as count FROM movies WHERE deletedAt IS NOT NULL").get() as {
+      count: number;
+    }
+  ).count;
+  const seasons = (
+    db.prepare("SELECT COUNT(*) as count FROM seasons WHERE deletedAt IS NOT NULL").get() as {
+      count: number;
+    }
+  ).count;
+  const episodes = (
+    db.prepare("SELECT COUNT(*) as count FROM episodes WHERE deletedAt IS NOT NULL").get() as {
+      count: number;
+    }
+  ).count;
+  return { movies, seasons, episodes, total: movies + seasons + episodes };
+}
+
+export function purgeDeletedItems(): number {
+  const db = getDb();
+  const deletedMovieCount = (
+    db.prepare("SELECT COUNT(*) as count FROM movies WHERE deletedAt IS NOT NULL").get() as {
+      count: number;
+    }
+  ).count;
+  const deletedSeasonIds = (
+    db
+      .prepare("SELECT id FROM seasons WHERE deletedAt IS NOT NULL")
+      .all() as Array<{ id: string }>
+  ).map((r) => r.id);
+
+  db.prepare("DELETE FROM movies WHERE deletedAt IS NOT NULL").run();
+
+  if (deletedSeasonIds.length > 0) {
+    const placeholders = deletedSeasonIds.map(() => "?").join(", ");
+    db.prepare(
+      `DELETE FROM episodes WHERE seasonId IN (${placeholders})`
+    ).run(...deletedSeasonIds);
+  }
+  db.prepare("DELETE FROM seasons WHERE deletedAt IS NOT NULL").run();
+  db.prepare("DELETE FROM episodes WHERE deletedAt IS NOT NULL").run();
+
+  return deletedMovieCount + deletedSeasonIds.length;
 }
 
