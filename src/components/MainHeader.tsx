@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Search, RefreshCw, Settings, User, Menu } from "lucide-react";
+import { Search, RefreshCw, Menu } from "lucide-react";
 import { SearchableDropdown } from "./SearchableDropdown";
 import { useState } from "react";
 
@@ -99,14 +99,7 @@ export function MainHeader({
               <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
             </button>
             
-            <div className="flex items-center gap-2 text-sm text-muted">
-              <div className="hidden h-8 w-8 items-center justify-center rounded-full bg-surface-strong sm:flex">
-                <User className="h-4 w-4 text-muted" />
-              </div>
-              <span className="hidden lg:inline-block">
-                {libraryRootPath ? libraryRootPath.split("/").pop() : "No Library"}
-              </span>
-            </div>
+
           </div>
         </div>
 

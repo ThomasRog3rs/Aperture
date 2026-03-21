@@ -190,6 +190,39 @@ function ensureSchema(db: DbInstance) {
   if (!episodeColNames.has("deletedAt")) {
     db.exec("ALTER TABLE episodes ADD COLUMN deletedAt INTEGER NULL");
   }
+
+  // ── Playback & transcoding columns ──────────────────────────
+  if (!columnNames.has("transcodeStatus")) {
+    db.exec("ALTER TABLE movies ADD COLUMN transcodeStatus TEXT DEFAULT 'none'");
+  }
+  if (!columnNames.has("transcodedPath")) {
+    db.exec("ALTER TABLE movies ADD COLUMN transcodedPath TEXT");
+  }
+  if (!columnNames.has("hlsPath")) {
+    db.exec("ALTER TABLE movies ADD COLUMN hlsPath TEXT");
+  }
+  if (!columnNames.has("storyboardPath")) {
+    db.exec("ALTER TABLE movies ADD COLUMN storyboardPath TEXT");
+  }
+  if (!columnNames.has("watchProgressSeconds")) {
+    db.exec("ALTER TABLE movies ADD COLUMN watchProgressSeconds INTEGER DEFAULT 0");
+  }
+
+  if (!episodeColNames.has("transcodeStatus")) {
+    db.exec("ALTER TABLE episodes ADD COLUMN transcodeStatus TEXT DEFAULT 'none'");
+  }
+  if (!episodeColNames.has("transcodedPath")) {
+    db.exec("ALTER TABLE episodes ADD COLUMN transcodedPath TEXT");
+  }
+  if (!episodeColNames.has("hlsPath")) {
+    db.exec("ALTER TABLE episodes ADD COLUMN hlsPath TEXT");
+  }
+  if (!episodeColNames.has("storyboardPath")) {
+    db.exec("ALTER TABLE episodes ADD COLUMN storyboardPath TEXT");
+  }
+  if (!episodeColNames.has("watchProgressSeconds")) {
+    db.exec("ALTER TABLE episodes ADD COLUMN watchProgressSeconds INTEGER DEFAULT 0");
+  }
 }
 
 export function getDb(): DbInstance {

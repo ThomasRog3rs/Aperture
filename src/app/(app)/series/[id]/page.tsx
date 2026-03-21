@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Image as ImageIcon,
   Loader2,
+  Monitor,
   Play,
   Save,
   Video,
@@ -17,9 +18,11 @@ import {
   Info,
   Edit3,
   RefreshCw,
+  X,
 } from "lucide-react";
 import { StatusBanner } from "@/components/StatusBanner";
 import { Modal } from "@/components/Modal";
+import { VideoPlayer } from "@/components/VideoPlayer";
 import { formatRating, tmdbImageUrl } from "@/lib/format";
 import type { Episode, SeasonWithEpisodes, Series } from "@/lib/types";
 
@@ -58,6 +61,7 @@ export default function SeriesDetailPage() {
   const [selectedFolderImage, setSelectedFolderImage] = useState("");
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState<string | null>(null);
+  const [activeEpisode, setActiveEpisode] = useState<Episode | null>(null);
   const [togglingWatched, setTogglingWatched] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -147,7 +151,20 @@ export default function SeriesDetailPage() {
     }
   }, [folderImages, posterInput, selectedFolderImage]);
 
-  const handlePlay = useCallback(async (episode: Episode) => {
+  const handlePlay = useCallback((episode: Episode) => {
+    if (!episode.filePath) {
+      setNotice({ tone: "error", message: "File path missing for this episode." });
+      return;
+    }
+    setActiveEpisode(episode);
+    setNotice(null);
+  }, []);
+
+  const handleClosePlayer = useCallback(() => {
+    setActiveEpisode(null);
+  }, []);
+
+  const handlePlayExternal = useCallback(async (episode: Episode) => {
     if (!episode.filePath) {
       setNotice({ tone: "error", message: "File path missing for this episode." });
       return;
@@ -166,7 +183,7 @@ export default function SeriesDetailPage() {
       }
       setNotice({
         tone: "success",
-        message: `Playing ${episode.titleClean || episode.titleRaw}.`,
+        message: `Playing ${episode.titleClean || episode.titleRaw} in external player.`,
       });
     } catch (error) {
       setNotice({
@@ -458,6 +475,28 @@ export default function SeriesDetailPage() {
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8 2xl:max-w-screen-2xl">
         {notice ? <StatusBanner tone={notice.tone} message={notice.message} /> : null}
 
+        {activeEpisode ? (
+          <VideoPlayer
+            title={
+              (activeEpisode.episodeNumber != null ? `Episode ${activeEpisode.episodeNumber} — ` : "") +
+              (activeEpisode.titleClean || activeEpisode.titleRaw)
+            }
+            streamUrl={`/api/episodes/${activeEpisode.id}/stream`}
+            thumbnailsVttUrl={`/api/episodes/${activeEpisode.id}/storyboard/vtt`}
+            startTime={activeEpisode.watchProgressSeconds ?? 0}
+            onClose={handleClosePlayer}
+            onError={(msg) => setNotice({ tone: "error", message: msg })}
+            onTimeUpdate={(currentTime, duration) => {
+              fetch(`/api/episodes/${activeEpisode.id}/watch-progress`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ currentTime, duration }),
+              }).catch(() => {});
+            }}
+            onExternalPlayer={() => handlePlayExternal(activeEpisode)}
+          />
+        ) : null}
+
         {loading ? (
           <div className="flex items-center justify-center gap-3 rounded-2xl border border-border bg-surface p-10 text-sm text-muted 2xl:text-base">
             <Loader2 className="h-5 w-5 animate-spin text-accent" />
@@ -620,14 +659,23 @@ export default function SeriesDetailPage() {
                                     {episode.titleClean || episode.titleRaw}
                                   </td>
                                   <td className="px-4 py-3 text-right whitespace-nowrap">
-                                    <button
-                                      onClick={() => handlePlay(episode)}
-                                      disabled={playing === episode.id}
-                                      className="inline-flex items-center gap-2 rounded-lg bg-accent/10 text-accent px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-accent hover:text-background disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                      <Play className="h-3.5 w-3.5" />
-                                      {playing === episode.id ? "Launching..." : "Play"}
-                                    </button>
+                                    <div className="inline-flex items-center gap-1">
+                                      <button
+                                        onClick={() => handlePlay(episode)}
+                                        className="inline-flex items-center gap-2 rounded-lg bg-accent/10 text-accent px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-accent hover:text-background disabled:cursor-not-allowed disabled:opacity-50"
+                                      >
+                                        <Play className="h-3.5 w-3.5" />
+                                        Play
+                                      </button>
+                                      <button
+                                        onClick={() => handlePlayExternal(episode)}
+                                        disabled={playing === episode.id}
+                                        className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1.5 text-xs text-muted transition-colors hover:border-border-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                                        title="Play in external player"
+                                      >
+                                        <Monitor className="h-3 w-3" />
+                                      </button>
+                                    </div>
                                   </td>
                                 </tr>
                               ))}

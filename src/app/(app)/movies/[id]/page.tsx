@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   Image as ImageIcon,
   Loader2,
+  Monitor,
   Play,
   RefreshCw,
   Save,
@@ -18,9 +19,11 @@ import {
   Edit3,
   CheckCircle2,
   Circle,
+  X,
 } from "lucide-react";
 import { StatusBanner } from "@/components/StatusBanner";
 import { Modal } from "@/components/Modal";
+import { VideoPlayer } from "@/components/VideoPlayer";
 import { formatRating, formatRuntime, tmdbImageUrl } from "@/lib/format";
 import type { Movie } from "@/lib/types";
 
@@ -79,6 +82,7 @@ export default function MovieDetailPage() {
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const [showPlayer, setShowPlayer] = useState(false);
   const [savingGenres, setSavingGenres] = useState(false);
   const [savingXxxRated, setSavingXxxRated] = useState(false);
   const [savingWatched, setSavingWatched] = useState(false);
@@ -356,7 +360,21 @@ export default function MovieDetailPage() {
     }
   }, [movie]);
 
-  const handlePlay = useCallback(async () => {
+  const handlePlay = useCallback(() => {
+    if (!movie) return;
+    if (!movie.filePath) {
+      setNotice({ tone: "error", message: "File path missing for this movie." });
+      return;
+    }
+    setShowPlayer(true);
+    setNotice(null);
+  }, [movie]);
+
+  const handleClosePlayer = useCallback(() => {
+    setShowPlayer(false);
+  }, []);
+
+  const handlePlayExternal = useCallback(async () => {
     if (!movie) return;
     if (!movie.filePath) {
       setNotice({ tone: "error", message: "File path missing for this movie." });
@@ -374,7 +392,7 @@ export default function MovieDetailPage() {
       if (!response.ok) {
         throw new Error(data.error || "Failed to launch player.");
       }
-      setNotice({ tone: "success", message: `Playing ${movie.titleClean}.` });
+      setNotice({ tone: "success", message: `Playing ${movie.titleClean} in external player.` });
     } catch (error) {
       setNotice({
         tone: "error",
@@ -483,11 +501,20 @@ export default function MovieDetailPage() {
             <div className="flex flex-wrap items-center gap-3 mt-4">
               <button
                 onClick={handlePlay}
-                disabled={playing || !movie.filePath}
+                disabled={!movie.filePath}
                 className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-white text-black font-semibold hover:bg-white/90 transition-colors disabled:opacity-50"
               >
                 <Play className="h-5 w-5 fill-current" />
-                {playing ? "Launching..." : "Play"}
+                Play
+              </button>
+
+              <button
+                onClick={handlePlayExternal}
+                disabled={playing || !movie.filePath}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-surface-strong/80 backdrop-blur-sm text-white font-semibold hover:bg-surface-strong transition-colors border border-white/10 disabled:opacity-50"
+              >
+                <Monitor className="h-4 w-4" />
+                {playing ? "Launching..." : "External player"}
               </button>
 
               <button
@@ -549,6 +576,26 @@ export default function MovieDetailPage() {
 
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8 2xl:max-w-screen-2xl">
         {notice ? <StatusBanner tone={notice.tone} message={notice.message} /> : null}
+
+        {showPlayer && movie ? (
+          <VideoPlayer
+            title={movie.titleClean}
+            streamUrl={`/api/movies/${movie.id}/stream`}
+            posterUrl={movie.backdropPath ? tmdbImageUrl(movie.backdropPath, "w780") ?? undefined : undefined}
+            thumbnailsVttUrl={`/api/movies/${movie.id}/storyboard/vtt`}
+            startTime={movie.watchProgressSeconds ?? 0}
+            onClose={handleClosePlayer}
+            onError={(msg) => setNotice({ tone: "error", message: msg })}
+            onTimeUpdate={(currentTime, duration) => {
+              fetch(`/api/movies/${movie.id}/watch-progress`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ currentTime, duration }),
+              }).catch(() => {});
+            }}
+            onExternalPlayer={handlePlayExternal}
+          />
+        ) : null}
 
         {loading ? (
           <div className="flex items-center justify-center gap-3 rounded-2xl border border-border bg-surface p-10 text-sm text-muted 2xl:text-base">
