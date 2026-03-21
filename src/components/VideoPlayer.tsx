@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   X,
   Monitor,
-  Maximize2,
-  Minimize2,
   Play,
   Pause,
   Volume2,
@@ -13,11 +12,11 @@ import {
   RotateCcw,
   RotateCw,
   Loader2,
-  Maximize,
   SkipBack,
   SkipForward,
   ListVideo,
   Check,
+  ChevronDown,
 } from "lucide-react";
 
 export type VideoPlayerEpisodeTarget = {
@@ -87,9 +86,10 @@ function PlayerHoverCard({
 }: PlayerHoverCardProps) {
   return (
     <div
+      aria-hidden="true"
       className={`pointer-events-none absolute bottom-full z-30 mb-3 w-72 max-w-[calc(100vw-2rem)] rounded-2xl border border-border bg-surface/95 p-4 text-left shadow-2xl backdrop-blur-xl transition-all duration-200 ${
         align === "left" ? "left-0" : "right-0"
-      } translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100`}
+      } translate-y-2 opacity-0 peer-hover:translate-y-0 peer-hover:opacity-100 peer-focus-visible:translate-y-0 peer-focus-visible:opacity-100`}
     >
       <p className="text-[11px] uppercase tracking-[0.24em] text-faint">{label}</p>
       {target ? (
@@ -137,12 +137,12 @@ export function VideoPlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [buffered, setBuffered] = useState(0);
-  const [isTheaterMode, setIsTheaterMode] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isSeeking, setIsSeeking] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isEpisodeSelectorOpen, setIsEpisodeSelectorOpen] = useState(false);
+  const [openEpisodeSeasonId, setOpenEpisodeSeasonId] = useState<string | null>(null);
 
   // Stream mode: "direct" supports native range-request seeking,
   // "remux"/"transcode" requires URL reload with ?start= for seeking
@@ -327,15 +327,31 @@ export function VideoPlayer({
     [isDirectPlay, timeOffset, getStreamSrc]
   );
 
-  const toggleFullscreen = useCallback(() => {
+  const enterFullscreen = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    } else {
-      el.requestFullscreen();
-    }
+    if (document.fullscreenElement === el) return;
+    void el.requestFullscreen().catch(() => {});
   }, []);
+
+  useEffect(() => {
+    enterFullscreen();
+  }, [enterFullscreen]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleFullscreenChange = () => {
+      if (document.fullscreenElement !== el) {
+        onClose();
+      }
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () =>
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, [onClose]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -376,10 +392,6 @@ export function VideoPlayer({
           video.volume = Math.max(0, video.volume - 0.1);
           setVolume(video.volume);
           break;
-        case "f":
-          e.preventDefault();
-          toggleFullscreen();
-          break;
         case "m":
           e.preventDefault();
           video.muted = !video.muted;
@@ -391,10 +403,6 @@ export function VideoPlayer({
             setIsEpisodeSelectorOpen(false);
             break;
           }
-          if (isTheaterMode) {
-            e.preventDefault();
-            setIsTheaterMode(false);
-          }
           break;
       }
       resetHideTimer();
@@ -403,12 +411,10 @@ export function VideoPlayer({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     isEpisodeSelectorOpen,
-    isTheaterMode,
     resetHideTimer,
     effectiveTime,
     effectiveDuration,
     seekTo,
-    toggleFullscreen,
   ]);
 
   const handleVideoTimeUpdate = useCallback(() => {
@@ -508,14 +514,31 @@ export function VideoPlayer({
 
   const canBrowseEpisodes = Boolean(onSelectEpisode && episodeSeasons?.length);
 
+  const getDefaultOpenEpisodeSeasonId = useCallback(() => {
+    if (!episodeSeasons?.length) return null;
+    return (
+      episodeSeasons.find((season) =>
+        season.episodes.some((episode) => episode.isCurrent)
+      )?.id ??
+      episodeSeasons[0]?.id ??
+      null
+    );
+  }, [episodeSeasons]);
+
   const toggleEpisodeSelector = useCallback(() => {
     if (!canBrowseEpisodes) return;
     setShowControls(true);
     if (hideControlsTimer.current) {
       clearTimeout(hideControlsTimer.current);
     }
-    setIsEpisodeSelectorOpen((prev) => !prev);
-  }, [canBrowseEpisodes]);
+    setIsEpisodeSelectorOpen((prev) => {
+      const nextIsOpen = !prev;
+      if (nextIsOpen) {
+        setOpenEpisodeSeasonId(getDefaultOpenEpisodeSeasonId());
+      }
+      return nextIsOpen;
+    });
+  }, [canBrowseEpisodes, getDefaultOpenEpisodeSeasonId]);
 
   const handleSelectEpisode = useCallback(
     (episodeId: string) => {
@@ -526,12 +549,14 @@ export function VideoPlayer({
     [onSelectEpisode]
   );
 
+  const toggleEpisodeSeason = useCallback((seasonId: string) => {
+    setOpenEpisodeSeasonId((prev) => (prev === seasonId ? null : seasonId));
+  }, []);
+
   return (
     <div
       ref={containerRef}
-      className={`group relative w-full overflow-hidden rounded-2xl border border-border bg-black shadow-2xl transition-all select-none ${
-        isTheaterMode ? "fixed inset-0 z-50 rounded-none border-none" : ""
-      }`}
+      className="group fixed inset-0 z-50 w-full overflow-hidden rounded-none border-none bg-black shadow-2xl transition-all select-none"
       onMouseMove={resetHideTimer}
       onMouseLeave={() => {
         if (!videoRef.current?.paused && !isEpisodeSelectorOpen) setShowControls(false);
@@ -540,15 +565,12 @@ export function VideoPlayer({
       {/* Video element */}
       <video
         ref={videoRef}
-        className={`w-full bg-black cursor-pointer ${
-          isTheaterMode ? "h-full object-contain" : "max-h-[75vh]"
-        }`}
+        className="h-full w-full cursor-pointer bg-black object-contain"
         src={getStreamSrc()}
         poster={posterUrl}
         playsInline
         autoPlay
         onClick={togglePlay}
-        onDoubleClick={toggleFullscreen}
         onPlay={() => {
           setIsPlaying(true);
           resetHideTimer();
@@ -637,60 +659,104 @@ export function VideoPlayer({
             </button>
           </div>
           <div className="max-h-[min(60vh,34rem)] overflow-y-auto bg-background/90">
-            {episodeSeasons?.map((season) => (
-              <section key={season.id} className="border-t border-border/60 first:border-t-0">
-                <div className="sticky top-0 z-10 border-b border-border/60 bg-surface/95 px-5 py-3 backdrop-blur">
-                  <p className="text-sm font-semibold text-foreground">{season.title}</p>
-                  {season.subtitle ? (
-                    <p className="mt-0.5 text-xs text-muted">{season.subtitle}</p>
-                  ) : null}
-                </div>
-                <div className="divide-y divide-border/40">
-                  {season.episodes.map((episode) => (
+            {episodeSeasons?.map((season) => {
+              const isSeasonOpen = season.id === openEpisodeSeasonId;
+              const seasonPanelId = `episode-selector-season-${season.id.replace(
+                /[^a-zA-Z0-9_-]/g,
+                "-"
+              )}`;
+
+              return (
+                <section
+                  key={season.id}
+                  className="border-t border-border/60 first:border-t-0"
+                >
+                  <h3>
                     <button
-                      key={episode.id}
-                      onClick={() => handleSelectEpisode(episode.id)}
-                      className={`flex w-full items-center gap-4 px-5 py-3 text-left transition-colors ${
-                        episode.isCurrent
-                          ? "bg-accent/10"
-                          : "hover:bg-surface-strong/60"
-                      }`}
+                      type="button"
+                      onClick={() => toggleEpisodeSeason(season.id)}
+                      aria-expanded={isSeasonOpen}
+                      aria-controls={seasonPanelId}
+                      className="flex w-full items-center justify-between gap-4 bg-surface/95 px-5 py-4 text-left transition-colors hover:bg-surface"
                     >
-                      <span className="w-8 flex-shrink-0 text-sm font-semibold text-faint">
-                        {episode.numberLabel}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <p
-                            className={`truncate text-sm font-medium ${
-                              episode.isCurrent ? "text-foreground" : "text-white/90"
-                            }`}
-                          >
-                            {episode.title}
-                          </p>
-                          {episode.isCurrent ? (
-                            <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
-                              Playing
-                            </span>
-                          ) : null}
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-foreground">
+                          {season.title}
+                        </p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+                          {season.subtitle ? <span>{season.subtitle}</span> : null}
+                          <span>{season.episodes.length} episodes</span>
                         </div>
-                        <p className="mt-1 text-xs text-muted">{episode.subtitle}</p>
                       </div>
-                      <div className="flex flex-shrink-0 items-center gap-2">
-                        {episode.watched ? (
-                          <span className="rounded-full border border-border/80 bg-surface/80 p-1.5 text-muted">
-                            <Check className="h-3.5 w-3.5" />
-                          </span>
-                        ) : null}
-                        <span className="rounded-full border border-white/20 bg-white/5 p-2 text-white/80 transition-colors">
-                          <Play className="h-3.5 w-3.5 fill-current" />
-                        </span>
-                      </div>
+                      <ChevronDown
+                        className={`h-4 w-4 flex-shrink-0 text-muted transition-transform ${
+                          isSeasonOpen ? "rotate-180 text-foreground" : ""
+                        }`}
+                      />
                     </button>
-                  ))}
-                </div>
-              </section>
-            ))}
+                  </h3>
+                  <AnimatePresence initial={false}>
+                    {isSeasonOpen ? (
+                      <motion.div
+                        key={seasonPanelId}
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                        className="overflow-hidden"
+                      >
+                        <div id={seasonPanelId} className="divide-y divide-border/40">
+                          {season.episodes.map((episode) => (
+                            <button
+                              key={episode.id}
+                              onClick={() => handleSelectEpisode(episode.id)}
+                              className={`flex w-full items-center gap-4 px-5 py-3 text-left transition-colors ${
+                                episode.isCurrent
+                                  ? "bg-accent/10"
+                                  : "hover:bg-surface-strong/60"
+                              }`}
+                            >
+                              <span className="w-8 flex-shrink-0 text-sm font-semibold text-faint">
+                                {episode.numberLabel}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <p
+                                    className={`truncate text-sm font-medium ${
+                                      episode.isCurrent ? "text-foreground" : "text-white/90"
+                                    }`}
+                                  >
+                                    {episode.title}
+                                  </p>
+                                  {episode.isCurrent ? (
+                                    <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
+                                      Playing
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <p className="mt-1 text-xs text-muted">
+                                  {episode.subtitle}
+                                </p>
+                              </div>
+                              <div className="flex flex-shrink-0 items-center gap-2">
+                                {episode.watched ? (
+                                  <span className="rounded-full border border-border/80 bg-surface/80 p-1.5 text-muted">
+                                    <Check className="h-3.5 w-3.5" />
+                                  </span>
+                                ) : null}
+                                <span className="rounded-full border border-white/20 bg-white/5 p-2 text-white/80 transition-colors">
+                                  <Play className="h-3.5 w-3.5 fill-current" />
+                                </span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+                </section>
+              );
+            })}
           </div>
         </div>
       ) : null}
@@ -714,17 +780,6 @@ export function VideoPlayer({
               <Monitor className="h-4 w-4" />
             </button>
           )}
-          <button
-            onClick={() => setIsTheaterMode((prev) => !prev)}
-            className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
-            title={isTheaterMode ? "Exit theater mode" : "Theater mode"}
-          >
-            {isTheaterMode ? (
-              <Minimize2 className="h-4 w-4" />
-            ) : (
-              <Maximize2 className="h-4 w-4" />
-            )}
-          </button>
           <button
             onClick={onClose}
             className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
@@ -835,18 +890,10 @@ export function VideoPlayer({
           <div className="ml-auto flex items-center gap-2">
             {canBrowseEpisodes ? (
               <div className="group relative">
-                <PlayerHoverCard
-                  label="Episode selector"
-                  target={{
-                    id: "episodes",
-                    title: "Browse all seasons",
-                    subtitle: "Open the in-player episode list.",
-                  }}
-                />
                 <button
                   ref={episodeSelectorButtonRef}
                   onClick={toggleEpisodeSelector}
-                  className={`rounded-xl border px-3 py-2 text-white/80 transition-colors ${
+                  className={`peer rounded-xl border px-3 py-2 text-white/80 transition-colors ${
                     isEpisodeSelectorOpen
                       ? "border-accent/50 bg-accent/20 text-white"
                       : "border-white/10 bg-white/5 hover:bg-white/10 hover:text-white"
@@ -855,15 +902,22 @@ export function VideoPlayer({
                 >
                   <ListVideo className="h-4 w-4" />
                 </button>
+                <PlayerHoverCard
+                  label="Episode selector"
+                  target={{
+                    id: "episodes",
+                    title: "Browse all seasons",
+                    subtitle: "Open the in-player episode list.",
+                  }}
+                />
               </div>
             ) : null}
             <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
               <div className="group relative">
-                <PlayerHoverCard label="Previous episode" target={previousEpisode} />
                 <button
                   onClick={onPreviousEpisode}
                   disabled={!onPreviousEpisode}
-                  className="rounded-lg p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  className="peer rounded-lg p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                   aria-label={
                     previousEpisode
                       ? `Previous episode: ${previousEpisode.title}`
@@ -872,27 +926,29 @@ export function VideoPlayer({
                 >
                   <SkipBack className="h-4 w-4" />
                 </button>
+                <PlayerHoverCard label="Previous episode" target={previousEpisode} />
               </div>
               <div className="group relative">
-                <PlayerHoverCard label="Next episode" target={nextEpisode} />
                 <button
                   onClick={onNextEpisode}
                   disabled={!onNextEpisode}
-                  className="rounded-lg p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  className="peer rounded-lg p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                   aria-label={
                     nextEpisode ? `Next episode: ${nextEpisode.title}` : "No next episode"
                   }
                 >
                   <SkipForward className="h-4 w-4" />
                 </button>
+                <PlayerHoverCard label="Next episode" target={nextEpisode} />
               </div>
             </div>
             <button
-              onClick={toggleFullscreen}
+              onClick={onClose}
               className="rounded-xl border border-white/10 bg-white/5 p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-              title="Fullscreen (F)"
+              title="Exit player"
+              aria-label="Exit player"
             >
-              <Maximize className="h-4 w-4" />
+              <X className="h-4 w-4" />
             </button>
           </div>
         </div>
