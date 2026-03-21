@@ -83,6 +83,10 @@ export function getEncoderArgs(accel: HardwareAccel): string[] {
 const WEB_PLAYABLE_CONTAINERS = new Set([".mp4", ".m4v", ".webm"]);
 const WEB_PLAYABLE_VIDEO_CODECS = new Set(["h264", "vp8", "vp9", "av1"]);
 const WEB_PLAYABLE_AUDIO_CODECS = new Set(["aac", "mp3", "opus", "vorbis", "flac"]);
+// Stricter set: codecs that are valid inside an MP4 container across all browsers.
+// vorbis and flac are excluded — they are only valid in WebM/Ogg containers and
+// Firefox refuses to play them when remuxed into MP4.
+const MP4_COMPATIBLE_AUDIO_CODECS = new Set(["aac", "mp3", "opus"]);
 
 export type ProbeResult = {
   videoCodec: string | null;
@@ -91,6 +95,7 @@ export type ProbeResult = {
   duration: number;
   width: number;
   height: number;
+  pixFmt: string | null;
 };
 
 // In-memory probe cache (keyed by file path)
@@ -115,7 +120,7 @@ export async function probeFile(filePath: string): Promise<ProbeResult> {
   ], { timeout: 30_000 });
 
   const data = JSON.parse(stdout);
-  const streams: Array<{ codec_type: string; codec_name: string; width?: number; height?: number }> =
+  const streams: Array<{ codec_type: string; codec_name: string; width?: number; height?: number; pix_fmt?: string }> =
     data.streams || [];
   const format = data.format || {};
 
@@ -129,6 +134,7 @@ export async function probeFile(filePath: string): Promise<ProbeResult> {
     duration: parseFloat(format.duration ?? "0"),
     width: videoStream?.width ?? 0,
     height: videoStream?.height ?? 0,
+    pixFmt: videoStream?.pix_fmt ?? null,
   };
 
   probeCache.set(filePath, { result, mtime: stat.mtimeMs });
@@ -149,8 +155,19 @@ export function getPlaybackMode(probe: ProbeResult): PlaybackMode {
   const videoOk = probe.videoCodec ? WEB_PLAYABLE_VIDEO_CODECS.has(probe.videoCodec) : true;
   const audioOk = probe.audioCodec ? WEB_PLAYABLE_AUDIO_CODECS.has(probe.audioCodec) : true;
 
-  if (containerOk && videoOk && audioOk) return "direct";
-  if (videoOk && audioOk) return "remux";
+  // Firefox has no 10-bit H.264 (Hi10P) decoder. Chrome handles it via hardware
+  // acceleration. Force a transcode to 8-bit H.264 so Firefox can play the output.
+  // AV1 and VP9 natively support 10-bit and Firefox decodes them fine, so only
+  // gate on h264.
+  const is10BitH264 =
+    probe.videoCodec === "h264" &&
+    probe.pixFmt != null &&
+    (probe.pixFmt.includes("10") || probe.pixFmt.includes("12"));
+
+  const videoCompatible = videoOk && !is10BitH264;
+
+  if (containerOk && videoCompatible && audioOk) return "direct";
+  if (videoCompatible && audioOk) return "remux";
   return "transcode";
 }
 
@@ -197,18 +214,27 @@ export async function createLiveStream(
       preInputArgs.push("-hwaccel", "cuda", "-hwaccel_output_format", "cuda");
       videoArgs = encoderArgs.slice(4); // skip hwaccel flags already added
     } else {
-      videoArgs = encoderArgs;
+      // Ensure 8-bit yuv420p pixel format before encoding. This is required for
+      // h264_videotoolbox (and libx264) when the source is 10-bit (e.g. HEVC
+      // Hi10P). Without this, the encoder may fail on macOS or produce frames
+      // the browser can't decode.
+      videoArgs = [...encoderArgs, "-vf", "format=yuv420p"];
     }
-    audioArgs = ["-c:a", "aac", "-b:a", "192k"];
+    // Force stereo output. The native ffmpeg aac encoder's multi-channel (5.1,
+    // 7.1) support is unreliable; Firefox rejects non-standard AAC channel
+    // configurations. Downmixing to stereo here handles DTS-HD MA, EAC3 5.1,
+    // TrueHD, and any other surround source.
+    audioArgs = ["-c:a", "aac", "-ac", "2", "-b:a", "192k"];
   }
 
-  // Check if audio needs separate transcoding even in remux mode
-  // (e.g., H.264 video but AC3/DTS audio in MKV)
+  // Transcode audio that is not safe in an MP4 container even in remux mode.
+  // WEB_PLAYABLE_AUDIO_CODECS includes vorbis and flac which work in WebM/Ogg
+  // but are rejected by Firefox when muxed into MP4.
   if (mode === "remux") {
     try {
       const probe = await probeFile(filePath);
-      if (probe.audioCodec && !WEB_PLAYABLE_AUDIO_CODECS.has(probe.audioCodec)) {
-        audioArgs = ["-c:a", "aac", "-b:a", "192k"];
+      if (probe.audioCodec && !MP4_COMPATIBLE_AUDIO_CODECS.has(probe.audioCodec)) {
+        audioArgs = ["-c:a", "aac", "-ac", "2", "-b:a", "192k"];
       }
     } catch {
       // If probe fails, try copy anyway
@@ -314,10 +340,19 @@ export async function transcodeToH264(
 
   const probe = await probeFile(inputPath);
 
-  const scaleFilter: string[] = [];
+  // Build the video filter chain. Combine resolution cap and pixel format
+  // conversion into a single -vf argument so they don't conflict.
+  const videoFilters: string[] = [];
   if (options?.resolutionCap && probe.height > options.resolutionCap) {
-    scaleFilter.push("-vf", `scale=-2:${options.resolutionCap}`);
+    videoFilters.push(`scale=-2:${options.resolutionCap}`);
   }
+  // Ensure 8-bit yuv420p output for all non-nvenc paths. Required when the
+  // source is 10-bit (e.g. HEVC Hi10P) so h264_videotoolbox and libx264 don't
+  // reject the frame format.
+  if (accel !== "nvenc") {
+    videoFilters.push("format=yuv420p");
+  }
+  const filterArgs = videoFilters.length > 0 ? ["-vf", videoFilters.join(",")] : [];
 
   const job: TranscodeJob = {
     id: mediaId,
@@ -342,8 +377,8 @@ export async function transcodeToH264(
     ...preInputArgs,
     "-i", inputPath,
     ...videoEncoderArgs,
-    ...scaleFilter,
-    "-c:a", "aac", "-b:a", "192k",
+    ...filterArgs,
+    "-c:a", "aac", "-ac", "2", "-b:a", "192k",
     "-g", "60", "-keyint_min", "60",
     "-movflags", "+faststart",
     "-progress", "pipe:1",
