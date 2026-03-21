@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Folder, RefreshCw, Trash2 } from "lucide-react";
+import { Folder, RefreshCw, Trash2, Play } from "lucide-react";
 import { StatusBanner } from "@/components/StatusBanner";
 
 type SettingsResponse = {
@@ -28,6 +28,8 @@ export default function SettingsPage() {
   const [syncing, setSyncing] = useState(false);
   const [purging, setPurging] = useState(false);
   const [deletedStats, setDeletedStats] = useState<DeletedStats | null>(null);
+  const [playerMode, setPlayerMode] = useState<"browser" | "external">("browser");
+  const [savingPlayer, setSavingPlayer] = useState(false);
   const [notice, setNotice] = useState<{
     tone: "info" | "success" | "error";
     message: string;
@@ -46,8 +48,9 @@ export default function SettingsPage() {
   useEffect(() => {
     fetch("/api/settings")
       .then((response) => response.json())
-      .then((data: SettingsResponse) => {
+      .then((data: SettingsResponse & { playerMode?: string }) => {
         setLibraryRootPath(data.libraryRootPath ?? "");
+        if (data.playerMode === "external") setPlayerMode("external");
       })
       .catch(() => {
         setNotice({ tone: "error", message: "Failed to load settings." });
@@ -232,6 +235,81 @@ export default function SettingsPage() {
             ) : (
               <p className="text-sm text-muted">Loading…</p>
             )}
+          </div>
+        </div>
+
+        {/* Playback Settings */}
+        <div className="rounded-2xl border border-border bg-surface p-8 shadow-[0_16px_48px_rgba(0,0,0,0.35)]">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-muted text-accent">
+              <Play className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold tracking-tight">
+                Playback Settings
+              </h2>
+              <p className="text-sm text-muted">
+                Configure how videos are played.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-col gap-4">
+            <label className="text-xs font-medium uppercase tracking-[0.2em] text-faint">
+              Default player
+            </label>
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  setPlayerMode("browser");
+                  setSavingPlayer(true);
+                  try {
+                    await fetch("/api/settings", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ playerMode: "browser" }),
+                    });
+                  } catch { /* ignore */ } finally {
+                    setSavingPlayer(false);
+                  }
+                }}
+                disabled={savingPlayer}
+                className={`flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
+                  playerMode === "browser"
+                    ? "border-accent bg-accent-muted text-accent"
+                    : "border-border text-muted hover:border-border-hover hover:text-foreground"
+                }`}
+              >
+                🎬 Browser Player (Vidstack)
+              </button>
+              <button
+                onClick={async () => {
+                  setPlayerMode("external");
+                  setSavingPlayer(true);
+                  try {
+                    await fetch("/api/settings", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ playerMode: "external" }),
+                    });
+                  } catch { /* ignore */ } finally {
+                    setSavingPlayer(false);
+                  }
+                }}
+                disabled={savingPlayer}
+                className={`flex-1 rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
+                  playerMode === "external"
+                    ? "border-accent bg-accent-muted text-accent"
+                    : "border-border text-muted hover:border-border-hover hover:text-foreground"
+                }`}
+              >
+                🖥️ External OS Player
+              </button>
+            </div>
+            <p className="text-xs text-faint">
+              The browser player streams directly in the app with full seek controls. The external
+              player opens your OS default media player (VLC, mpv, etc.).
+            </p>
           </div>
         </div>
 

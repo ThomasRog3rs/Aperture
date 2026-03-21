@@ -667,6 +667,11 @@ export type MovieUpdate = {
   personalRating?: number | null;
   xxxRated?: number | null;
   watched?: number | null;
+  transcodeStatus?: string;
+  transcodedPath?: string | null;
+  hlsPath?: string | null;
+  storyboardPath?: string | null;
+  watchProgressSeconds?: number;
 };
 
 export function updateMovie(id: string, updates: MovieUpdate) {
@@ -868,6 +873,11 @@ export function getEpisodeById(id: string): EpisodeRow | null {
 
 export type EpisodeUpdate = {
   watched?: number;
+  transcodeStatus?: string;
+  transcodedPath?: string | null;
+  hlsPath?: string | null;
+  storyboardPath?: string | null;
+  watchProgressSeconds?: number;
 };
 
 export function updateEpisode(id: string, updates: EpisodeUpdate) {
