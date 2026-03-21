@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -18,11 +18,14 @@ import {
   Info,
   Edit3,
   RefreshCw,
-  X,
 } from "lucide-react";
 import { StatusBanner } from "@/components/StatusBanner";
 import { Modal } from "@/components/Modal";
-import { VideoPlayer } from "@/components/VideoPlayer";
+import {
+  VideoPlayer,
+  type VideoPlayerEpisodeListSeason,
+  type VideoPlayerEpisodeTarget,
+} from "@/components/VideoPlayer";
 import { formatRating, tmdbImageUrl } from "@/lib/format";
 import type { Episode, SeasonWithEpisodes, Series } from "@/lib/types";
 
@@ -47,6 +50,38 @@ type FolderImagesResponse = {
   error?: string;
 };
 
+function getEpisodeDisplayTitle(episode: Episode): string {
+  return episode.titleClean || episode.titleRaw;
+}
+
+function getEpisodePlayerTitle(episode: Episode): string {
+  return (
+    (episode.episodeNumber != null ? `Episode ${episode.episodeNumber} — ` : "") +
+    getEpisodeDisplayTitle(episode)
+  );
+}
+
+function getSeasonLabel(season: SeasonWithEpisodes): string {
+  return season.seasonNumber != null ? `Season ${season.seasonNumber}` : "Season";
+}
+
+function getEpisodeNumberLabel(episode: Episode): string {
+  return episode.episodeNumber != null ? String(episode.episodeNumber) : "—";
+}
+
+function getEpisodeNavigationTarget(
+  season: SeasonWithEpisodes,
+  episode: Episode
+): VideoPlayerEpisodeTarget {
+  const episodeLabel =
+    episode.episodeNumber != null ? `Episode ${episode.episodeNumber}` : "Episode";
+  return {
+    id: episode.id,
+    title: getEpisodeDisplayTitle(episode),
+    subtitle: `${getSeasonLabel(season)} • ${episodeLabel}`,
+  };
+}
+
 export default function SeriesDetailPage() {
   const params = useParams<{ id?: string | string[] }>();
   const router = useRouter();
@@ -61,7 +96,8 @@ export default function SeriesDetailPage() {
   const [selectedFolderImage, setSelectedFolderImage] = useState("");
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState<string | null>(null);
-  const [activeEpisode, setActiveEpisode] = useState<Episode | null>(null);
+  const [activeEpisodeId, setActiveEpisodeId] = useState<string | null>(null);
+  const [playerStartTime, setPlayerStartTime] = useState(0);
   const [togglingWatched, setTogglingWatched] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -151,18 +187,133 @@ export default function SeriesDetailPage() {
     }
   }, [folderImages, posterInput, selectedFolderImage]);
 
-  const handlePlay = useCallback((episode: Episode) => {
+  const orderedEpisodes = useMemo(
+    () =>
+      seasons.flatMap((season) =>
+        season.episodes.map((episode) => ({
+          season,
+          episode,
+          target: getEpisodeNavigationTarget(season, episode),
+        }))
+      ),
+    [seasons]
+  );
+
+  const activeEpisodeIndex = useMemo(
+    () =>
+      activeEpisodeId
+        ? orderedEpisodes.findIndex(({ episode }) => episode.id === activeEpisodeId)
+        : -1,
+    [activeEpisodeId, orderedEpisodes]
+  );
+
+  const activeEpisodeItem =
+    activeEpisodeIndex >= 0 ? orderedEpisodes[activeEpisodeIndex] : null;
+  const activeEpisode = activeEpisodeItem?.episode ?? null;
+  const previousEpisodeItem =
+    activeEpisodeIndex > 0 ? orderedEpisodes[activeEpisodeIndex - 1] : null;
+  const nextEpisodeItem =
+    activeEpisodeIndex >= 0 && activeEpisodeIndex < orderedEpisodes.length - 1
+      ? orderedEpisodes[activeEpisodeIndex + 1]
+      : null;
+
+  const episodeSelectorSeasons = useMemo<VideoPlayerEpisodeListSeason[]>(
+    () =>
+      seasons.map((season) => {
+        const sectionTitle = getSeasonLabel(season);
+        return {
+          id: season.id,
+          title: sectionTitle,
+          subtitle:
+            season.titleClean && season.titleClean !== sectionTitle
+              ? season.titleClean
+              : undefined,
+          episodes: season.episodes.map((episode) => {
+            const target = getEpisodeNavigationTarget(season, episode);
+            return {
+              ...target,
+              numberLabel: getEpisodeNumberLabel(episode),
+              watched: episode.watched,
+              isCurrent: episode.id === activeEpisodeId,
+            };
+          }),
+        };
+      }),
+    [activeEpisodeId, seasons]
+  );
+
+  useEffect(() => {
+    if (
+      activeEpisodeId &&
+      !orderedEpisodes.some(({ episode }) => episode.id === activeEpisodeId)
+    ) {
+      setPlayerStartTime(0);
+      setActiveEpisodeId(null);
+    }
+  }, [activeEpisodeId, orderedEpisodes]);
+
+  const updateEpisodeInState = useCallback(
+    (episodeId: string, updates: Partial<Episode>) => {
+      setSeasons((prev) =>
+        prev.map((season) => {
+          let didUpdate = false;
+          const episodes = season.episodes.map((episode) => {
+            if (episode.id !== episodeId) return episode;
+            didUpdate = true;
+            return { ...episode, ...updates };
+          });
+          return didUpdate ? { ...season, episodes } : season;
+        })
+      );
+    },
+    []
+  );
+
+  const playEpisode = useCallback((episode: Episode) => {
     if (!episode.filePath) {
       setNotice({ tone: "error", message: "File path missing for this episode." });
       return;
     }
-    setActiveEpisode(episode);
+    setPlayerStartTime(episode.watchProgressSeconds ?? 0);
+    setActiveEpisodeId(episode.id);
     setNotice(null);
   }, []);
 
+  const handlePlay = useCallback(
+    (episode: Episode) => {
+      playEpisode(episode);
+    },
+    [playEpisode]
+  );
+
   const handleClosePlayer = useCallback(() => {
-    setActiveEpisode(null);
+    setPlayerStartTime(0);
+    setActiveEpisodeId(null);
   }, []);
+
+  const handlePlayPreviousEpisode = useCallback(() => {
+    if (previousEpisodeItem) {
+      playEpisode(previousEpisodeItem.episode);
+    }
+  }, [playEpisode, previousEpisodeItem]);
+
+  const handlePlayNextEpisode = useCallback(() => {
+    if (nextEpisodeItem) {
+      playEpisode(nextEpisodeItem.episode);
+    }
+  }, [nextEpisodeItem, playEpisode]);
+
+  const handleSelectEpisode = useCallback(
+    (episodeId: string) => {
+      const selectedEpisode = orderedEpisodes.find(
+        ({ episode }) => episode.id === episodeId
+      )?.episode;
+      if (selectedEpisode) {
+        playEpisode(selectedEpisode);
+      }
+    },
+    [orderedEpisodes, playEpisode]
+  );
 
   const handlePlayExternal = useCallback(async (episode: Episode) => {
     if (!episode.filePath) {
@@ -209,14 +360,7 @@ export default function SeriesDetailPage() {
         if (!response.ok || !data.episode) {
           throw new Error(data.error || "Failed to update episode.");
         }
-        setSeasons((prev) =>
-          prev.map((season) => ({
-            ...season,
-            episodes: season.episodes.map((ep) =>
-              ep.id === episode.id ? { ...ep, watched: data.episode.watched } : ep
-            ),
-          }))
-        );
+        updateEpisodeInState(episode.id, { watched: data.episode.watched });
       } catch (error) {
         setNotice({
           tone: "error",
@@ -231,7 +375,43 @@ export default function SeriesDetailPage() {
         });
       }
     },
-    []
+    [updateEpisodeInState]
+  );
+
+  const handleEpisodeTimeUpdate = useCallback(
+    (episodeId: string, currentTime: number, duration: number) => {
+      const roundedTime = Math.round(currentTime);
+      const isWatched = duration > 0 && currentTime / duration >= 0.9;
+      updateEpisodeInState(episodeId, {
+        watchProgressSeconds: roundedTime,
+        ...(isWatched ? { watched: true } : {}),
+      });
+      fetch(`/api/episodes/${episodeId}/watch-progress`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentTime, duration }),
+      }).catch(() => {});
+    },
+    [updateEpisodeInState]
+  );
+
+  const handleEpisodeEnded = useCallback(
+    (episodeId: string, currentTime: number, duration: number) => {
+      const completedTime = duration > 0 ? duration : currentTime;
+      updateEpisodeInState(episodeId, {
+        watchProgressSeconds: Math.round(completedTime),
+        watched: true,
+      });
+      fetch(`/api/episodes/${episodeId}/watch-progress`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentTime: completedTime, duration: completedTime }),
+      }).catch(() => {});
+      if (nextEpisodeItem) {
+        playEpisode(nextEpisodeItem.episode);
+      }
+    },
+    [nextEpisodeItem, playEpisode, updateEpisodeInState]
   );
 
   const handleSave = useCallback(async () => {
@@ -343,7 +523,7 @@ export default function SeriesDetailPage() {
       });
       setDeleting(false);
     }
-  }, [series]);
+  }, [router, series]);
 
   const seasonSummary = useMemo(() => {
     if (!series) return "";
@@ -477,23 +657,25 @@ export default function SeriesDetailPage() {
 
         {activeEpisode ? (
           <VideoPlayer
-            title={
-              (activeEpisode.episodeNumber != null ? `Episode ${activeEpisode.episodeNumber} — ` : "") +
-              (activeEpisode.titleClean || activeEpisode.titleRaw)
-            }
+            title={getEpisodePlayerTitle(activeEpisode)}
             streamUrl={`/api/episodes/${activeEpisode.id}/stream`}
             thumbnailsVttUrl={`/api/episodes/${activeEpisode.id}/storyboard/vtt`}
-            startTime={activeEpisode.watchProgressSeconds ?? 0}
+            startTime={playerStartTime}
             onClose={handleClosePlayer}
             onError={(msg) => setNotice({ tone: "error", message: msg })}
-            onTimeUpdate={(currentTime, duration) => {
-              fetch(`/api/episodes/${activeEpisode.id}/watch-progress`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ currentTime, duration }),
-              }).catch(() => {});
-            }}
+            onTimeUpdate={(currentTime, duration) =>
+              handleEpisodeTimeUpdate(activeEpisode.id, currentTime, duration)
+            }
+            onEnded={(currentTime, duration) =>
+              handleEpisodeEnded(activeEpisode.id, currentTime, duration)
+            }
             onExternalPlayer={() => handlePlayExternal(activeEpisode)}
+            onPreviousEpisode={previousEpisodeItem ? handlePlayPreviousEpisode : undefined}
+            previousEpisode={previousEpisodeItem?.target}
+            onNextEpisode={nextEpisodeItem ? handlePlayNextEpisode : undefined}
+            nextEpisode={nextEpisodeItem?.target}
+            episodeSeasons={episodeSelectorSeasons}
+            onSelectEpisode={handleSelectEpisode}
           />
         ) : null}
 
@@ -655,9 +837,9 @@ export default function SeriesDetailPage() {
                                   <td className="px-4 py-3 text-foreground whitespace-nowrap">
                                     {episode.episodeNumber ?? "—"}
                                   </td>
-                                  <td className={`px-4 py-3 ${episode.watched ? "text-muted line-through" : "text-foreground"}`}>
-                                    {episode.titleClean || episode.titleRaw}
-                                  </td>
+                                   <td className={`px-4 py-3 ${episode.watched ? "text-muted line-through" : "text-foreground"}`}>
+                                     {getEpisodeDisplayTitle(episode)}
+                                   </td>
                                   <td className="px-4 py-3 text-right whitespace-nowrap">
                                     <div className="inline-flex items-center gap-1">
                                       <button

@@ -14,7 +14,30 @@ import {
   RotateCw,
   Loader2,
   Maximize,
+  SkipBack,
+  SkipForward,
+  ListVideo,
+  Check,
 } from "lucide-react";
+
+export type VideoPlayerEpisodeTarget = {
+  id: string;
+  title: string;
+  subtitle: string;
+};
+
+export type VideoPlayerEpisodeListItem = VideoPlayerEpisodeTarget & {
+  numberLabel: string;
+  watched: boolean;
+  isCurrent: boolean;
+};
+
+export type VideoPlayerEpisodeListSeason = {
+  id: string;
+  title: string;
+  subtitle?: string;
+  episodes: VideoPlayerEpisodeListItem[];
+};
 
 export type VideoPlayerProps = {
   title: string;
@@ -25,8 +48,15 @@ export type VideoPlayerProps = {
   onClose: () => void;
   onError?: (message: string) => void;
   onTimeUpdate?: (currentTime: number, duration: number) => void;
+  onEnded?: (currentTime: number, duration: number) => void;
   startTime?: number;
   onExternalPlayer?: () => void;
+  onPreviousEpisode?: () => void;
+  previousEpisode?: VideoPlayerEpisodeTarget;
+  onNextEpisode?: () => void;
+  nextEpisode?: VideoPlayerEpisodeTarget;
+  episodeSeasons?: VideoPlayerEpisodeListSeason[];
+  onSelectEpisode?: (episodeId: string) => void;
 };
 
 type StreamInfo = {
@@ -44,6 +74,36 @@ function formatTime(seconds: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+type PlayerHoverCardProps = {
+  label: string;
+  target?: VideoPlayerEpisodeTarget;
+  align?: "left" | "right";
+};
+
+function PlayerHoverCard({
+  label,
+  target,
+  align = "right",
+}: PlayerHoverCardProps) {
+  return (
+    <div
+      className={`pointer-events-none absolute bottom-full z-30 mb-3 w-72 max-w-[calc(100vw-2rem)] rounded-2xl border border-border bg-surface/95 p-4 text-left shadow-2xl backdrop-blur-xl transition-all duration-200 ${
+        align === "left" ? "left-0" : "right-0"
+      } translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100`}
+    >
+      <p className="text-[11px] uppercase tracking-[0.24em] text-faint">{label}</p>
+      {target ? (
+        <div className="mt-2 space-y-1">
+          <p className="text-base font-semibold text-foreground">{target.title}</p>
+          <p className="text-sm text-muted">{target.subtitle}</p>
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-muted">No episode available.</p>
+      )}
+    </div>
+  );
+}
+
 export function VideoPlayer({
   title,
   streamUrl,
@@ -52,12 +112,21 @@ export function VideoPlayer({
   onClose,
   onError,
   onTimeUpdate,
+  onEnded,
   startTime,
   onExternalPlayer,
+  onPreviousEpisode,
+  previousEpisode,
+  onNextEpisode,
+  nextEpisode,
+  episodeSeasons,
+  onSelectEpisode,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
+  const episodeSelectorButtonRef = useRef<HTMLButtonElement>(null);
+  const episodeSelectorPanelRef = useRef<HTMLDivElement>(null);
   const lastReportedTime = useRef(0);
   const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didSeekToStart = useRef(false);
@@ -73,6 +142,7 @@ export function VideoPlayer({
   const [isLoading, setIsLoading] = useState(true);
   const [isSeeking, setIsSeeking] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isEpisodeSelectorOpen, setIsEpisodeSelectorOpen] = useState(false);
 
   // Stream mode: "direct" supports native range-request seeking,
   // "remux"/"transcode" requires URL reload with ?start= for seeking
@@ -84,16 +154,22 @@ export function VideoPlayer({
 
   // Fetch stream info on mount to determine playback mode
   useEffect(() => {
+    let isCancelled = false;
     const infoUrl = streamUrl.replace(/\/stream$/, "/stream/info");
     fetch(infoUrl)
       .then((r) => r.json())
       .then((info: StreamInfo) => {
+        if (isCancelled) return;
         setStreamInfo(info);
         if (info.duration > 0) setDuration(info.duration);
       })
       .catch(() => {
+        if (isCancelled) return;
         setStreamInfo({ mode: "direct", duration: 0 });
       });
+    return () => {
+      isCancelled = true;
+    };
   }, [streamUrl]);
 
   // Build the effective video src (with ?start= for transcoded streams)
@@ -122,15 +198,66 @@ export function VideoPlayer({
   const resetHideTimer = useCallback(() => {
     setShowControls(true);
     if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
+    if (isEpisodeSelectorOpen) return;
     hideControlsTimer.current = setTimeout(() => {
       if (videoRef.current && !videoRef.current.paused) {
         setShowControls(false);
       }
     }, 3000);
+  }, [isEpisodeSelectorOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (hideControlsTimer.current) {
+        clearTimeout(hideControlsTimer.current);
+      }
+    };
   }, []);
+
+  useEffect(() => {
+    if (!isEpisodeSelectorOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (episodeSelectorPanelRef.current?.contains(target)) return;
+      if (episodeSelectorButtonRef.current?.contains(target)) return;
+      setIsEpisodeSelectorOpen(false);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [isEpisodeSelectorOpen]);
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  // We reset per-episode playback state here so switching episodes keeps the
+  // fullscreen container mounted while clearing stale timing/loading values.
+  useEffect(() => {
+    const video = videoRef.current;
+    didSeekToStart.current = false;
+    lastReportedTime.current = 0;
+    setIsEpisodeSelectorOpen(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setBuffered(0);
+    setTimeOffset(0);
+    setShowControls(true);
+    setIsLoading(true);
+    setIsSeeking(false);
+    setIsDragging(false);
+    setIsPlaying(false);
+
+    if (!video) return;
+    video.pause();
+    video.src = hlsUrl || streamUrl;
+    video.load();
+    video.play().catch(() => {});
+  }, [streamUrl, hlsUrl]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Seek to startTime once metadata is loaded (for direct play)
   // For transcoded streams, load with ?start= from the start
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !startTime || startTime <= 0 || !streamInfo) return;
@@ -158,6 +285,7 @@ export function VideoPlayer({
       return () => video.removeEventListener("loadedmetadata", onLoaded);
     }
   }, [startTime, streamInfo, isDirectPlay, getStreamSrc]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Unified seek function for both direct and transcoded streams
   const seekTo = useCallback(
@@ -224,7 +352,11 @@ export function VideoPlayer({
         case " ":
         case "k":
           e.preventDefault();
-          video.paused ? video.play() : video.pause();
+          if (video.paused) {
+            video.play();
+          } else {
+            video.pause();
+          }
           break;
         case "ArrowLeft":
           e.preventDefault();
@@ -254,6 +386,11 @@ export function VideoPlayer({
           setIsMuted(video.muted);
           break;
         case "Escape":
+          if (isEpisodeSelectorOpen) {
+            e.preventDefault();
+            setIsEpisodeSelectorOpen(false);
+            break;
+          }
           if (isTheaterMode) {
             e.preventDefault();
             setIsTheaterMode(false);
@@ -264,7 +401,15 @@ export function VideoPlayer({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isTheaterMode, resetHideTimer, effectiveTime, effectiveDuration, seekTo, toggleFullscreen]);
+  }, [
+    isEpisodeSelectorOpen,
+    isTheaterMode,
+    resetHideTimer,
+    effectiveTime,
+    effectiveDuration,
+    seekTo,
+    toggleFullscreen,
+  ]);
 
   const handleVideoTimeUpdate = useCallback(() => {
     const video = videoRef.current;
@@ -341,7 +486,11 @@ export function VideoPlayer({
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
-    video.paused ? video.play() : video.pause();
+    if (video.paused) {
+      video.play();
+    } else {
+      video.pause();
+    }
   }, []);
 
   const skip = useCallback(
@@ -357,6 +506,26 @@ export function VideoPlayer({
     [seekTo, effectiveTime, effectiveDuration, resetHideTimer]
   );
 
+  const canBrowseEpisodes = Boolean(onSelectEpisode && episodeSeasons?.length);
+
+  const toggleEpisodeSelector = useCallback(() => {
+    if (!canBrowseEpisodes) return;
+    setShowControls(true);
+    if (hideControlsTimer.current) {
+      clearTimeout(hideControlsTimer.current);
+    }
+    setIsEpisodeSelectorOpen((prev) => !prev);
+  }, [canBrowseEpisodes]);
+
+  const handleSelectEpisode = useCallback(
+    (episodeId: string) => {
+      if (!onSelectEpisode) return;
+      setIsEpisodeSelectorOpen(false);
+      onSelectEpisode(episodeId);
+    },
+    [onSelectEpisode]
+  );
+
   return (
     <div
       ref={containerRef}
@@ -365,7 +534,7 @@ export function VideoPlayer({
       }`}
       onMouseMove={resetHideTimer}
       onMouseLeave={() => {
-        if (!videoRef.current?.paused) setShowControls(false);
+        if (!videoRef.current?.paused && !isEpisodeSelectorOpen) setShowControls(false);
       }}
     >
       {/* Video element */}
@@ -387,6 +556,19 @@ export function VideoPlayer({
         onPause={() => {
           setIsPlaying(false);
           setShowControls(true);
+        }}
+        onEnded={() => {
+          const video = videoRef.current;
+          const endedTime = video ? video.currentTime + timeOffset : effectiveTime;
+          const endedDuration =
+            effectiveDuration > 0
+              ? effectiveDuration
+              : video?.duration && isFinite(video.duration)
+                ? video.duration + timeOffset
+                : 0;
+          setIsPlaying(false);
+          setShowControls(true);
+          onEnded?.(endedTime, endedDuration);
         }}
         onTimeUpdate={handleVideoTimeUpdate}
         onDurationChange={() => {
@@ -431,6 +613,87 @@ export function VideoPlayer({
           </div>
         </button>
       )}
+
+      {isEpisodeSelectorOpen && canBrowseEpisodes ? (
+        <div
+          ref={episodeSelectorPanelRef}
+          className="absolute bottom-20 right-4 z-30 flex w-[min(30rem,calc(100%-2rem))] max-w-full flex-col overflow-hidden rounded-3xl border border-border bg-background/95 shadow-2xl backdrop-blur-xl"
+        >
+          <div className="flex items-start justify-between gap-4 border-b border-border bg-surface/90 px-5 py-4">
+            <div className="min-w-0">
+              <p className="text-[11px] uppercase tracking-[0.24em] text-faint">
+                Episode selector
+              </p>
+              <p className="mt-1 text-lg font-semibold text-foreground">
+                Browse all seasons
+              </p>
+            </div>
+            <button
+              onClick={() => setIsEpisodeSelectorOpen(false)}
+              className="rounded-full p-2 text-muted transition-colors hover:bg-surface-strong hover:text-foreground"
+              aria-label="Close episode selector"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="max-h-[min(60vh,34rem)] overflow-y-auto bg-background/90">
+            {episodeSeasons?.map((season) => (
+              <section key={season.id} className="border-t border-border/60 first:border-t-0">
+                <div className="sticky top-0 z-10 border-b border-border/60 bg-surface/95 px-5 py-3 backdrop-blur">
+                  <p className="text-sm font-semibold text-foreground">{season.title}</p>
+                  {season.subtitle ? (
+                    <p className="mt-0.5 text-xs text-muted">{season.subtitle}</p>
+                  ) : null}
+                </div>
+                <div className="divide-y divide-border/40">
+                  {season.episodes.map((episode) => (
+                    <button
+                      key={episode.id}
+                      onClick={() => handleSelectEpisode(episode.id)}
+                      className={`flex w-full items-center gap-4 px-5 py-3 text-left transition-colors ${
+                        episode.isCurrent
+                          ? "bg-accent/10"
+                          : "hover:bg-surface-strong/60"
+                      }`}
+                    >
+                      <span className="w-8 flex-shrink-0 text-sm font-semibold text-faint">
+                        {episode.numberLabel}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p
+                            className={`truncate text-sm font-medium ${
+                              episode.isCurrent ? "text-foreground" : "text-white/90"
+                            }`}
+                          >
+                            {episode.title}
+                          </p>
+                          {episode.isCurrent ? (
+                            <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
+                              Playing
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 text-xs text-muted">{episode.subtitle}</p>
+                      </div>
+                      <div className="flex flex-shrink-0 items-center gap-2">
+                        {episode.watched ? (
+                          <span className="rounded-full border border-border/80 bg-surface/80 p-1.5 text-muted">
+                            <Check className="h-3.5 w-3.5" />
+                          </span>
+                        ) : null}
+                        <span className="rounded-full border border-white/20 bg-white/5 p-2 text-white/80 transition-colors">
+                          <Play className="h-3.5 w-3.5 fill-current" />
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {/* Top bar */}
       <div
@@ -529,7 +792,6 @@ export function VideoPlayer({
           >
             <RotateCw className="h-4 w-4" />
           </button>
-
           <div className="flex items-center gap-1 group/vol">
             <button
               onClick={() => {
@@ -570,13 +832,69 @@ export function VideoPlayer({
             </span>
           )}
 
-          <button
-            onClick={toggleFullscreen}
-            className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
-            title="Fullscreen (F)"
-          >
-            <Maximize className="h-4 w-4" />
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            {canBrowseEpisodes ? (
+              <div className="group relative">
+                <PlayerHoverCard
+                  label="Episode selector"
+                  target={{
+                    id: "episodes",
+                    title: "Browse all seasons",
+                    subtitle: "Open the in-player episode list.",
+                  }}
+                />
+                <button
+                  ref={episodeSelectorButtonRef}
+                  onClick={toggleEpisodeSelector}
+                  className={`rounded-xl border px-3 py-2 text-white/80 transition-colors ${
+                    isEpisodeSelectorOpen
+                      ? "border-accent/50 bg-accent/20 text-white"
+                      : "border-white/10 bg-white/5 hover:bg-white/10 hover:text-white"
+                  }`}
+                  aria-label="Browse episodes"
+                >
+                  <ListVideo className="h-4 w-4" />
+                </button>
+              </div>
+            ) : null}
+            <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
+              <div className="group relative">
+                <PlayerHoverCard label="Previous episode" target={previousEpisode} />
+                <button
+                  onClick={onPreviousEpisode}
+                  disabled={!onPreviousEpisode}
+                  className="rounded-lg p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label={
+                    previousEpisode
+                      ? `Previous episode: ${previousEpisode.title}`
+                      : "No previous episode"
+                  }
+                >
+                  <SkipBack className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="group relative">
+                <PlayerHoverCard label="Next episode" target={nextEpisode} />
+                <button
+                  onClick={onNextEpisode}
+                  disabled={!onNextEpisode}
+                  className="rounded-lg p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label={
+                    nextEpisode ? `Next episode: ${nextEpisode.title}` : "No next episode"
+                  }
+                >
+                  <SkipForward className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <button
+              onClick={toggleFullscreen}
+              className="rounded-xl border border-white/10 bg-white/5 p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+              title="Fullscreen (F)"
+            >
+              <Maximize className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
