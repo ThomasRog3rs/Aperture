@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   Image as ImageIcon,
   Loader2,
+  Monitor,
   Play,
   RefreshCw,
   Save,
@@ -18,6 +19,7 @@ import {
   Edit3,
   CheckCircle2,
   Circle,
+  X,
 } from "lucide-react";
 import { StatusBanner } from "@/components/StatusBanner";
 import { Modal } from "@/components/Modal";
@@ -79,6 +81,8 @@ export default function MovieDetailPage() {
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const [showPlayer, setShowPlayer] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [savingGenres, setSavingGenres] = useState(false);
   const [savingXxxRated, setSavingXxxRated] = useState(false);
   const [savingWatched, setSavingWatched] = useState(false);
@@ -356,7 +360,26 @@ export default function MovieDetailPage() {
     }
   }, [movie]);
 
-  const handlePlay = useCallback(async () => {
+  const handlePlay = useCallback(() => {
+    if (!movie) return;
+    if (!movie.filePath) {
+      setNotice({ tone: "error", message: "File path missing for this movie." });
+      return;
+    }
+    setShowPlayer(true);
+    setNotice(null);
+  }, [movie]);
+
+  const handleClosePlayer = useCallback(() => {
+    setShowPlayer(false);
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.removeAttribute("src");
+      videoRef.current.load();
+    }
+  }, []);
+
+  const handlePlayExternal = useCallback(async () => {
     if (!movie) return;
     if (!movie.filePath) {
       setNotice({ tone: "error", message: "File path missing for this movie." });
@@ -374,7 +397,7 @@ export default function MovieDetailPage() {
       if (!response.ok) {
         throw new Error(data.error || "Failed to launch player.");
       }
-      setNotice({ tone: "success", message: `Playing ${movie.titleClean}.` });
+      setNotice({ tone: "success", message: `Playing ${movie.titleClean} in external player.` });
     } catch (error) {
       setNotice({
         tone: "error",
@@ -483,11 +506,20 @@ export default function MovieDetailPage() {
             <div className="flex flex-wrap items-center gap-3 mt-4">
               <button
                 onClick={handlePlay}
-                disabled={playing || !movie.filePath}
+                disabled={!movie.filePath}
                 className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-white text-black font-semibold hover:bg-white/90 transition-colors disabled:opacity-50"
               >
                 <Play className="h-5 w-5 fill-current" />
-                {playing ? "Launching..." : "Play"}
+                Play
+              </button>
+
+              <button
+                onClick={handlePlayExternal}
+                disabled={playing || !movie.filePath}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-surface-strong/80 backdrop-blur-sm text-white font-semibold hover:bg-surface-strong transition-colors border border-white/10 disabled:opacity-50"
+              >
+                <Monitor className="h-4 w-4" />
+                {playing ? "Launching..." : "External player"}
               </button>
 
               <button
@@ -549,6 +581,37 @@ export default function MovieDetailPage() {
 
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8 2xl:max-w-screen-2xl">
         {notice ? <StatusBanner tone={notice.tone} message={notice.message} /> : null}
+
+        {showPlayer && movie ? (
+          <div className="relative w-full overflow-hidden rounded-2xl border border-border bg-black shadow-2xl">
+            <div className="flex items-center justify-between bg-surface-strong/80 px-4 py-2">
+              <span className="text-sm font-medium text-foreground truncate">
+                {movie.titleClean}
+              </span>
+              <button
+                onClick={handleClosePlayer}
+                className="rounded-lg p-1 text-muted hover:bg-surface hover:text-foreground transition-colors"
+                aria-label="Close player"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <video
+              ref={videoRef}
+              controls
+              autoPlay
+              className="w-full max-h-[70vh]"
+              src={`/api/movies/${movie.id}/stream`}
+              onError={() =>
+                setNotice({
+                  tone: "error",
+                  message:
+                    "Browser cannot play this file format. Try the external player.",
+                })
+              }
+            />
+          </div>
+        ) : null}
 
         {loading ? (
           <div className="flex items-center justify-center gap-3 rounded-2xl border border-border bg-surface p-10 text-sm text-muted 2xl:text-base">

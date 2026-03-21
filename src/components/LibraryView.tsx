@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Clapperboard, FolderOpen, Loader2 } from "lucide-react";
 import { ContentRow } from "@/components/ContentRow";
 import { HeroFeatured } from "@/components/HeroFeatured";
@@ -36,6 +36,7 @@ type MagnetSearchResponse = {
 };
 
 export function LibraryView() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialType =
     (searchParams.get("type") as "all" | "movies" | "series") || "all";
@@ -211,33 +212,9 @@ export function LibraryView() {
     }
   }, [fetchFilterOptions, fetchLibrary]);
 
-  const handlePlay = useCallback(async (movie: Movie) => {
-    if (!movie.filePath) {
-      setNotice({
-        tone: "error",
-        message: "File path missing for this movie.",
-      });
-      return;
-    }
-    try {
-      const response = await fetch("/api/play", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filePath: movie.filePath }),
-      });
-      const data = (await response.json()) as { error?: string };
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to launch player.");
-      }
-      setNotice({ tone: "success", message: `Playing ${movie.titleClean}.` });
-    } catch (error) {
-      setNotice({
-        tone: "error",
-        message:
-          error instanceof Error ? error.message : "Failed to launch player.",
-      });
-    }
-  }, []);
+  const handlePlay = useCallback((movie: Movie) => {
+    router.push(`/movies/${movie.id}`);
+  }, [router]);
 
   const handleWatched = useCallback(async (id: string, watchedValue: boolean) => {
     try {
