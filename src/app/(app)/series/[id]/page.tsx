@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { StatusBanner } from "@/components/StatusBanner";
 import { Modal } from "@/components/Modal";
+import { VideoPlayer } from "@/components/VideoPlayer";
 import { formatRating, tmdbImageUrl } from "@/lib/format";
 import type { Episode, SeasonWithEpisodes, Series } from "@/lib/types";
 
@@ -61,7 +62,6 @@ export default function SeriesDetailPage() {
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState<string | null>(null);
   const [activeEpisode, setActiveEpisode] = useState<Episode | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
   const [togglingWatched, setTogglingWatched] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -162,11 +162,6 @@ export default function SeriesDetailPage() {
 
   const handleClosePlayer = useCallback(() => {
     setActiveEpisode(null);
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.removeAttribute("src");
-      videoRef.current.load();
-    }
   }, []);
 
   const handlePlayExternal = useCallback(async (episode: Episode) => {
@@ -481,35 +476,25 @@ export default function SeriesDetailPage() {
         {notice ? <StatusBanner tone={notice.tone} message={notice.message} /> : null}
 
         {activeEpisode ? (
-          <div className="relative w-full overflow-hidden rounded-2xl border border-border bg-black shadow-2xl">
-            <div className="flex items-center justify-between bg-surface-strong/80 px-4 py-2">
-              <span className="text-sm font-medium text-foreground truncate">
-                {activeEpisode.episodeNumber != null ? `Episode ${activeEpisode.episodeNumber} — ` : ""}
-                {activeEpisode.titleClean || activeEpisode.titleRaw}
-              </span>
-              <button
-                onClick={handleClosePlayer}
-                className="rounded-lg p-1 text-muted hover:bg-surface hover:text-foreground transition-colors"
-                aria-label="Close player"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <video
-              ref={videoRef}
-              controls
-              autoPlay
-              className="w-full max-h-[70vh]"
-              src={`/api/episodes/${activeEpisode.id}/stream`}
-              onError={() =>
-                setNotice({
-                  tone: "error",
-                  message:
-                    "Browser cannot play this file format. Try the external player.",
-                })
-              }
-            />
-          </div>
+          <VideoPlayer
+            title={
+              (activeEpisode.episodeNumber != null ? `Episode ${activeEpisode.episodeNumber} — ` : "") +
+              (activeEpisode.titleClean || activeEpisode.titleRaw)
+            }
+            streamUrl={`/api/episodes/${activeEpisode.id}/stream`}
+            thumbnailsVttUrl={`/api/episodes/${activeEpisode.id}/storyboard/vtt`}
+            startTime={activeEpisode.watchProgressSeconds ?? 0}
+            onClose={handleClosePlayer}
+            onError={(msg) => setNotice({ tone: "error", message: msg })}
+            onTimeUpdate={(currentTime, duration) => {
+              fetch(`/api/episodes/${activeEpisode.id}/watch-progress`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ currentTime, duration }),
+              }).catch(() => {});
+            }}
+            onExternalPlayer={() => handlePlayExternal(activeEpisode)}
+          />
         ) : null}
 
         {loading ? (

@@ -34,6 +34,16 @@ export type Movie = {
   xxxRated: boolean;
   /** When true, user has marked this movie as watched. */
   watched: boolean;
+  /** Transcoding status: 'none' | 'queued' | 'in_progress' | 'done' | 'error' */
+  transcodeStatus?: string;
+  /** Path to transcoded MP4 file */
+  transcodedPath?: string | null;
+  /** Path to HLS manifest directory */
+  hlsPath?: string | null;
+  /** Path to storyboard assets directory */
+  storyboardPath?: string | null;
+  /** Playback position in seconds (for resume) */
+  watchProgressSeconds?: number;
 };
 
 export type Season = {
@@ -82,6 +92,16 @@ export type Episode = {
   fileSizeBytes: number;
   lastSyncedAt: number;
   watched: boolean;
+  /** Transcoding status: 'none' | 'queued' | 'in_progress' | 'done' | 'error' */
+  transcodeStatus?: string;
+  /** Path to transcoded MP4 file */
+  transcodedPath?: string | null;
+  /** Path to HLS manifest directory */
+  hlsPath?: string | null;
+  /** Path to storyboard assets directory */
+  storyboardPath?: string | null;
+  /** Playback position in seconds (for resume) */
+  watchProgressSeconds?: number;
 };
 
 export type SeasonWithEpisodes = Season & { episodes: Episode[] };

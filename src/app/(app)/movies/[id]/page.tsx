@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { StatusBanner } from "@/components/StatusBanner";
 import { Modal } from "@/components/Modal";
+import { VideoPlayer } from "@/components/VideoPlayer";
 import { formatRating, formatRuntime, tmdbImageUrl } from "@/lib/format";
 import type { Movie } from "@/lib/types";
 
@@ -82,7 +83,6 @@ export default function MovieDetailPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [showPlayer, setShowPlayer] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
   const [savingGenres, setSavingGenres] = useState(false);
   const [savingXxxRated, setSavingXxxRated] = useState(false);
   const [savingWatched, setSavingWatched] = useState(false);
@@ -372,11 +372,6 @@ export default function MovieDetailPage() {
 
   const handleClosePlayer = useCallback(() => {
     setShowPlayer(false);
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.removeAttribute("src");
-      videoRef.current.load();
-    }
   }, []);
 
   const handlePlayExternal = useCallback(async () => {
@@ -583,34 +578,23 @@ export default function MovieDetailPage() {
         {notice ? <StatusBanner tone={notice.tone} message={notice.message} /> : null}
 
         {showPlayer && movie ? (
-          <div className="relative w-full overflow-hidden rounded-2xl border border-border bg-black shadow-2xl">
-            <div className="flex items-center justify-between bg-surface-strong/80 px-4 py-2">
-              <span className="text-sm font-medium text-foreground truncate">
-                {movie.titleClean}
-              </span>
-              <button
-                onClick={handleClosePlayer}
-                className="rounded-lg p-1 text-muted hover:bg-surface hover:text-foreground transition-colors"
-                aria-label="Close player"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <video
-              ref={videoRef}
-              controls
-              autoPlay
-              className="w-full max-h-[70vh]"
-              src={`/api/movies/${movie.id}/stream`}
-              onError={() =>
-                setNotice({
-                  tone: "error",
-                  message:
-                    "Browser cannot play this file format. Try the external player.",
-                })
-              }
-            />
-          </div>
+          <VideoPlayer
+            title={movie.titleClean}
+            streamUrl={`/api/movies/${movie.id}/stream`}
+            posterUrl={movie.backdropPath ? tmdbImageUrl(movie.backdropPath, "w780") ?? undefined : undefined}
+            thumbnailsVttUrl={`/api/movies/${movie.id}/storyboard/vtt`}
+            startTime={movie.watchProgressSeconds ?? 0}
+            onClose={handleClosePlayer}
+            onError={(msg) => setNotice({ tone: "error", message: msg })}
+            onTimeUpdate={(currentTime, duration) => {
+              fetch(`/api/movies/${movie.id}/watch-progress`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ currentTime, duration }),
+              }).catch(() => {});
+            }}
+            onExternalPlayer={handlePlayExternal}
+          />
         ) : null}
 
         {loading ? (

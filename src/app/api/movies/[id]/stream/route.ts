@@ -6,8 +6,10 @@ import {
   getVideoContentType,
   createStreamResponse,
 } from "@/lib/streaming";
+import { getTranscodedPath } from "@/lib/transcoding";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET(
   request: Request,
@@ -28,6 +30,13 @@ export async function GET(
       { error: "No file path for this movie." },
       { status: 404 }
     );
+  }
+
+  // Prefer transcoded file if available
+  const transcodedPath = getTranscodedPath(id);
+  if (transcodedPath) {
+    const rangeHeader = request.headers.get("range");
+    return createStreamResponse(transcodedPath, rangeHeader);
   }
 
   const contentType = getVideoContentType(movie.filePath);

@@ -6,13 +6,21 @@ export const runtime = "nodejs";
 
 export async function GET() {
   const libraryRootPath = getSetting("libraryRootPath");
-  return NextResponse.json({ libraryRootPath });
+  const playerMode = getSetting("playerMode") ?? "browser";
+  return NextResponse.json({ libraryRootPath, playerMode });
 }
 
 export async function PUT(request: Request) {
   const body = (await request.json().catch(() => null)) as
-    | { libraryRootPath?: string }
+    | { libraryRootPath?: string; playerMode?: string }
     | null;
+
+  // Handle playerMode setting (standalone)
+  if (body?.playerMode && !body?.libraryRootPath) {
+    const mode = body.playerMode === "external" ? "external" : "browser";
+    setSetting("playerMode", mode);
+    return NextResponse.json({ playerMode: mode });
+  }
 
   const libraryRootPath = body?.libraryRootPath?.trim();
   if (!libraryRootPath) {

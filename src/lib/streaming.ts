@@ -102,6 +102,7 @@ const DEFAULT_CHUNK_SIZE = 1024 * 1024;
 
 /**
  * Creates a streaming Response for a video file, with full Range request support.
+ * Open-ended range requests are capped to avoid streaming entire multi-GB files.
  */
 export function createStreamResponse(
   resolvedFilePath: string,
@@ -123,7 +124,11 @@ export function createStreamResponse(
   }
 
   if (range) {
-    const { start, end } = range;
+    let { start, end } = range;
+    // Cap open-ended requests to DEFAULT_CHUNK_SIZE to avoid streaming the full file
+    if (end - start + 1 > DEFAULT_CHUNK_SIZE) {
+      end = Math.min(start + DEFAULT_CHUNK_SIZE - 1, fileSize - 1);
+    }
     const chunkSize = end - start + 1;
     const stream = fs.createReadStream(resolvedFilePath, { start, end });
     const webStream = readableNodeToWeb(stream);
@@ -140,7 +145,8 @@ export function createStreamResponse(
     });
   }
 
-  // No range → cap at DEFAULT_CHUNK_SIZE for initial response, but serve full if small
+  // No range header → return 200 with full Content-Length so browser knows
+  // file size and can issue range requests for seeking
   if (fileSize <= DEFAULT_CHUNK_SIZE) {
     const stream = fs.createReadStream(resolvedFilePath);
     const webStream = readableNodeToWeb(stream);
@@ -156,15 +162,18 @@ export function createStreamResponse(
     });
   }
 
-  // Large file without range → serve full file (browser will issue range requests for seeking)
-  const stream = fs.createReadStream(resolvedFilePath);
+  // Large file without range → serve first chunk as 206 so Safari initiates
+  // proper range-request flow (Safari requires 206 for seeking to work)
+  const end = Math.min(DEFAULT_CHUNK_SIZE - 1, fileSize - 1);
+  const stream = fs.createReadStream(resolvedFilePath, { start: 0, end });
   const webStream = readableNodeToWeb(stream);
 
   return new Response(webStream, {
-    status: 200,
+    status: 206,
     headers: {
       "Content-Type": contentType,
-      "Content-Length": String(fileSize),
+      "Content-Length": String(end + 1),
+      "Content-Range": `bytes 0-${end}/${fileSize}`,
       "Accept-Ranges": "bytes",
       "Cache-Control": "no-store",
     },
