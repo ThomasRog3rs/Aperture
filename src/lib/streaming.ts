@@ -125,8 +125,10 @@ export function createStreamResponse(
 
   if (range) {
     let { start, end } = range;
-    // Cap open-ended requests to DEFAULT_CHUNK_SIZE to avoid streaming the full file
-    if (end - start + 1 > DEFAULT_CHUNK_SIZE) {
+    const isOpenEnded = !rangeHeader?.match(/^bytes=\d+-\d+$/);
+    // Only cap open-ended requests (e.g. "bytes=0-") to avoid streaming entire multi-GB files.
+    // Explicit ranges (e.g. "bytes=500000-1500000") are served in full.
+    if (isOpenEnded && end - start + 1 > DEFAULT_CHUNK_SIZE) {
       end = Math.min(start + DEFAULT_CHUNK_SIZE - 1, fileSize - 1);
     }
     const chunkSize = end - start + 1;

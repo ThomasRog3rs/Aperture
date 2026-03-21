@@ -7,7 +7,7 @@ const execFileAsync = promisify(execFile);
 
 const TRANSCODES_DIR = path.join(process.cwd(), "data", "transcodes");
 
-export type HardwareAccel = "nvenc" | "qsv" | "software";
+export type HardwareAccel = "nvenc" | "qsv" | "videotoolbox" | "software";
 
 export type TranscodeJob = {
   id: string;
@@ -22,21 +22,27 @@ export type TranscodeJob = {
 // In-memory job tracker (survives during server lifetime)
 const jobs = new Map<string, TranscodeJob>();
 
+// Cached hardware accel result
+let cachedAccel: HardwareAccel | null = null;
+
 /**
  * Probes the system for available hardware acceleration.
- * Returns the best available encoder: nvenc > qsv > software.
+ * Returns the best available encoder: nvenc > qsv > videotoolbox > software.
  */
 export async function detectHardwareAccel(): Promise<HardwareAccel> {
+  if (cachedAccel) return cachedAccel;
   try {
     const { stdout } = await execFileAsync("ffmpeg", ["-encoders"], {
       timeout: 10_000,
     });
-    if (stdout.includes("h264_nvenc")) return "nvenc";
-    if (stdout.includes("h264_qsv")) return "qsv";
+    if (stdout.includes("h264_nvenc")) cachedAccel = "nvenc";
+    else if (stdout.includes("h264_qsv")) cachedAccel = "qsv";
+    else if (stdout.includes("h264_videotoolbox")) cachedAccel = "videotoolbox";
+    else cachedAccel = "software";
   } catch {
-    // ffmpeg not found or timed out
+    cachedAccel = "software";
   }
-  return "software";
+  return cachedAccel;
 }
 
 /**
@@ -58,6 +64,12 @@ export function getEncoderArgs(accel: HardwareAccel): string[] {
         "-c:v", "h264_qsv",
         "-preset", "faster",
         "-global_quality", "23",
+      ];
+    case "videotoolbox":
+      return [
+        "-c:v", "h264_videotoolbox",
+        "-q:v", "65",
+        "-allow_sw", "1",
       ];
     default:
       return [
@@ -81,10 +93,19 @@ export type ProbeResult = {
   height: number;
 };
 
+// In-memory probe cache (keyed by file path)
+const probeCache = new Map<string, { result: ProbeResult; mtime: number }>();
+
 /**
- * Uses ffprobe to inspect a media file.
+ * Uses ffprobe to inspect a media file (cached by file path + mtime).
  */
 export async function probeFile(filePath: string): Promise<ProbeResult> {
+  const stat = fs.statSync(filePath);
+  const cached = probeCache.get(filePath);
+  if (cached && cached.mtime === stat.mtimeMs) {
+    return cached.result;
+  }
+
   const { stdout } = await execFileAsync("ffprobe", [
     "-v", "quiet",
     "-print_format", "json",
@@ -101,7 +122,7 @@ export async function probeFile(filePath: string): Promise<ProbeResult> {
   const videoStream = streams.find((s) => s.codec_type === "video");
   const audioStream = streams.find((s) => s.codec_type === "audio");
 
-  return {
+  const result: ProbeResult = {
     videoCodec: videoStream?.codec_name ?? null,
     audioCodec: audioStream?.codec_name ?? null,
     container: path.extname(filePath).toLowerCase(),
@@ -109,6 +130,28 @@ export async function probeFile(filePath: string): Promise<ProbeResult> {
     width: videoStream?.width ?? 0,
     height: videoStream?.height ?? 0,
   };
+
+  probeCache.set(filePath, { result, mtime: stat.mtimeMs });
+  return result;
+}
+
+/** What the stream endpoint should do with the file */
+export type PlaybackMode = "direct" | "remux" | "transcode";
+
+/**
+ * Determines how a file should be streamed to the browser.
+ * - "direct": Browser can play natively, serve with range requests
+ * - "remux": Video/audio codecs are compatible but container isn't, just remux
+ * - "transcode": Video or audio codec is incompatible, must re-encode
+ */
+export function getPlaybackMode(probe: ProbeResult): PlaybackMode {
+  const containerOk = WEB_PLAYABLE_CONTAINERS.has(probe.container);
+  const videoOk = probe.videoCodec ? WEB_PLAYABLE_VIDEO_CODECS.has(probe.videoCodec) : true;
+  const audioOk = probe.audioCodec ? WEB_PLAYABLE_AUDIO_CODECS.has(probe.audioCodec) : true;
+
+  if (containerOk && videoOk && audioOk) return "direct";
+  if (videoOk && audioOk) return "remux";
+  return "transcode";
 }
 
 /**
@@ -117,13 +160,118 @@ export async function probeFile(filePath: string): Promise<ProbeResult> {
 export async function isDirectPlayCompatible(filePath: string): Promise<boolean> {
   try {
     const probe = await probeFile(filePath);
-    const containerOk = WEB_PLAYABLE_CONTAINERS.has(probe.container);
-    const videoOk = probe.videoCodec ? WEB_PLAYABLE_VIDEO_CODECS.has(probe.videoCodec) : true;
-    const audioOk = probe.audioCodec ? WEB_PLAYABLE_AUDIO_CODECS.has(probe.audioCodec) : true;
-    return containerOk && videoOk && audioOk;
+    return getPlaybackMode(probe) === "direct";
   } catch {
     return false;
   }
+}
+
+/**
+ * Creates an on-the-fly FFmpeg stream that remuxes or transcodes the file
+ * into a fragmented MP4 for browser playback.
+ *
+ * Returns a ReadableStream and the child process (for cleanup).
+ */
+export async function createLiveStream(
+  filePath: string,
+  mode: "remux" | "transcode",
+  startTime?: number
+): Promise<{ stream: ReadableStream<Uint8Array>; process: ChildProcess }> {
+  const accel = await detectHardwareAccel();
+
+  const preInputArgs: string[] = [];
+  if (startTime && startTime > 0) {
+    preInputArgs.push("-ss", String(startTime));
+  }
+
+  let videoArgs: string[];
+  let audioArgs: string[];
+
+  if (mode === "remux") {
+    videoArgs = ["-c:v", "copy"];
+    audioArgs = ["-c:a", "copy"];
+  } else {
+    // Transcode: use HW accel encoder
+    const encoderArgs = getEncoderArgs(accel);
+    if (accel === "nvenc") {
+      preInputArgs.push("-hwaccel", "cuda", "-hwaccel_output_format", "cuda");
+      videoArgs = encoderArgs.slice(4); // skip hwaccel flags already added
+    } else {
+      videoArgs = encoderArgs;
+    }
+    audioArgs = ["-c:a", "aac", "-b:a", "192k"];
+  }
+
+  // Check if audio needs separate transcoding even in remux mode
+  // (e.g., H.264 video but AC3/DTS audio in MKV)
+  if (mode === "remux") {
+    try {
+      const probe = await probeFile(filePath);
+      if (probe.audioCodec && !WEB_PLAYABLE_AUDIO_CODECS.has(probe.audioCodec)) {
+        audioArgs = ["-c:a", "aac", "-b:a", "192k"];
+      }
+    } catch {
+      // If probe fails, try copy anyway
+    }
+  }
+
+  const args = [
+    ...preInputArgs,
+    "-i", filePath,
+    ...videoArgs,
+    ...audioArgs,
+    "-movflags", "frag_keyframe+empty_moov+default_base_moof",
+    "-f", "mp4",
+    "pipe:1",
+  ];
+
+  const proc = spawn("ffmpeg", args, {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  // Log stderr for debugging (don't accumulate forever)
+  proc.stderr?.on("data", () => {
+    // Consume stderr to prevent pipe backup, but don't accumulate
+  });
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      proc.stdout!.on("data", (chunk: Buffer) => {
+        try {
+          controller.enqueue(new Uint8Array(chunk));
+        } catch {
+          // Controller may be closed if client disconnected
+          proc.kill("SIGTERM");
+        }
+      });
+      proc.stdout!.on("end", () => {
+        try {
+          controller.close();
+        } catch {
+          // Already closed
+        }
+      });
+      proc.stdout!.on("error", (err) => {
+        try {
+          controller.error(err);
+        } catch {
+          // Already errored/closed
+        }
+      });
+      proc.on("error", (err) => {
+        try {
+          controller.error(err);
+        } catch {
+          // Already errored/closed
+        }
+      });
+    },
+    cancel() {
+      proc.kill("SIGTERM");
+    },
+  });
+
+  return { stream, process: proc };
 }
 
 /**
@@ -180,11 +328,20 @@ export async function transcodeToH264(
   };
   jobs.set(mediaId, job);
 
+  const preInputArgs: string[] = [];
+  if (accel === "nvenc") {
+    preInputArgs.push("-hwaccel", "cuda", "-hwaccel_output_format", "cuda");
+  }
+
+  const videoEncoderArgs = accel === "nvenc"
+    ? encoderArgs.slice(4) // skip hwaccel flags
+    : encoderArgs;
+
   const args = [
     "-y",
-    ...(accel !== "software" ? encoderArgs.slice(0, 4) : []),
+    ...preInputArgs,
     "-i", inputPath,
-    ...(accel !== "software" ? encoderArgs.slice(4) : encoderArgs),
+    ...videoEncoderArgs,
     ...scaleFilter,
     "-c:a", "aac", "-b:a", "192k",
     "-g", "60", "-keyint_min", "60",
@@ -279,6 +436,7 @@ export async function packageAsHLS(
 
   const encoder = accel === "nvenc" ? "h264_nvenc"
     : accel === "qsv" ? "h264_qsv"
+    : accel === "videotoolbox" ? "h264_videotoolbox"
     : "libx264";
 
   const args = [

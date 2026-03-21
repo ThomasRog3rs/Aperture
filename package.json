@@ -10,11 +10,9 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@vidstack/react": "^1.12.13",
     "better-sqlite3": "^12.6.2",
     "fluent-ffmpeg": "^2.1.3",
     "framer-motion": "^12.34.0",
-    "hls.js": "^1.6.15",
     "lucide-react": "^0.564.0",
     "next": "16.1.6",
     "react": "19.2.3",

@@ -6,7 +6,12 @@ import {
   getVideoContentType,
   createStreamResponse,
 } from "@/lib/streaming";
-import { getTranscodedPath } from "@/lib/transcoding";
+import {
+  getTranscodedPath,
+  probeFile,
+  getPlaybackMode,
+  createLiveStream,
+} from "@/lib/transcoding";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,19 +40,11 @@ export async function GET(
     );
   }
 
-  // Prefer transcoded file if available
+  // Prefer pre-transcoded file if available
   const transcodedPath = getTranscodedPath(id);
   if (transcodedPath) {
     const rangeHeader = request.headers.get("range");
     return createStreamResponse(transcodedPath, rangeHeader);
-  }
-
-  const contentType = getVideoContentType(episode.filePath);
-  if (!contentType) {
-    return NextResponse.json(
-      { error: "Unsupported video format." },
-      { status: 400 }
-    );
   }
 
   const result = validateLibraryPath(episode.filePath);
@@ -60,6 +57,55 @@ export async function GET(
     return NextResponse.json({ error: "File not found." }, { status: 404 });
   }
 
-  const rangeHeader = request.headers.get("range");
-  return createStreamResponse(resolvedFile, rangeHeader);
+  // Probe the file to determine playback mode
+  let mode: "direct" | "remux" | "transcode";
+  try {
+    const probe = await probeFile(resolvedFile);
+    mode = getPlaybackMode(probe);
+  } catch {
+    mode = "direct";
+  }
+
+  if (mode === "direct") {
+    const contentType = getVideoContentType(episode.filePath);
+    if (!contentType) {
+      return NextResponse.json(
+        { error: "Unsupported video format." },
+        { status: 400 }
+      );
+    }
+    const rangeHeader = request.headers.get("range");
+    return createStreamResponse(resolvedFile, rangeHeader);
+  }
+
+  // Remux or transcode on-the-fly via FFmpeg
+  const url = new URL(request.url);
+  const startTime = parseFloat(url.searchParams.get("start") || "0") || 0;
+
+  try {
+    const { stream, process: proc } = await createLiveStream(
+      resolvedFile,
+      mode,
+      startTime > 0 ? startTime : undefined
+    );
+
+    request.signal.addEventListener("abort", () => {
+      proc.kill("SIGTERM");
+    });
+
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        "Content-Type": "video/mp4",
+        "Accept-Ranges": "none",
+        "Cache-Control": "no-store",
+        "X-Playback-Mode": mode,
+      },
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Failed to start transcoding stream." },
+      { status: 500 }
+    );
+  }
 }
