@@ -13,6 +13,21 @@ type SyncSummary = {
   updated: number;
   notFound: number;
   errors: number;
+  deleted?: number;
+};
+
+type IncrementalSyncResponse = {
+  mode?: "incremental";
+  folders?: {
+    checked: number;
+    rootChecked: number;
+    seasonChecked: number;
+    changed: number;
+    rescanned: number;
+  };
+  movies: SyncSummary;
+  seasons: SyncSummary;
+  error?: string;
 };
 
 type DeletedStats = {
@@ -88,13 +103,41 @@ export default function SettingsPage() {
     setNotice(null);
     try {
       const response = await fetch("/api/sync", { method: "POST" });
-      const data = (await response.json()) as SyncSummary & { error?: string };
+      const data = (await response.json()) as
+        | (SyncSummary & { error?: string })
+        | IncrementalSyncResponse;
       if (!response.ok) {
-        throw new Error(data.error || "Failed to sync library.");
+        throw new Error(("error" in data && data.error) || "Failed to sync library.");
       }
+      const summary =
+        "movies" in data && "seasons" in data
+          ? {
+              updated: data.movies.updated + data.seasons.updated,
+              notFound: data.movies.notFound + data.seasons.notFound,
+              errors: data.movies.errors + data.seasons.errors,
+              deleted: (data.movies.deleted ?? 0) + (data.seasons.deleted ?? 0),
+              label: `${data.movies.updated} movies, ${data.seasons.updated} seasons`,
+              foldersChecked: data.folders?.checked ?? null,
+              foldersRescanned: data.folders?.rescanned ?? null,
+            }
+          : {
+              updated: data.updated,
+              notFound: data.notFound,
+              errors: data.errors,
+              deleted: data.deleted ?? 0,
+              label: `${data.updated} movies`,
+              foldersChecked: null,
+              foldersRescanned: null,
+            };
+      const deletedPart = summary.deleted > 0 ? `, ${summary.deleted} deleted` : "";
+      const folderPart =
+        typeof summary.foldersChecked === "number" &&
+        typeof summary.foldersRescanned === "number"
+          ? ` Checked ${summary.foldersChecked} folders and rescanned ${summary.foldersRescanned}.`
+          : "";
       setNotice({
-        tone: data.errors > 0 ? "error" : "success",
-        message: `Synced ${data.updated} movies (${data.notFound} not found, ${data.errors} errors).`,
+        tone: summary.errors > 0 ? "error" : "success",
+        message: `Synced ${summary.label} (${summary.notFound} not found${deletedPart}, ${summary.errors} errors).${folderPart}`,
       });
       void fetchDeletedStats();
     } catch (error) {

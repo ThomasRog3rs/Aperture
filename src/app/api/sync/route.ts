@@ -2,11 +2,13 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { cleanTitle } from "@/lib/cleanTitle";
-import { scanLibrary } from "@/lib/scan";
+import { scanLibraryIncremental } from "@/lib/scan";
 import { resolveOmdbMovie, resolveOmdbSeries } from "@/lib/omdb";
 import {
   countEpisodesBySeasonId,
   getAllMovieFolderPaths,
+  listAllFolderScanEntries,
+  listAllFolderScanStates,
   getAllSeasonFolderPaths,
   getMovieById,
   getSeasonById,
@@ -15,6 +17,7 @@ import {
   markMoviesDeleted,
   markSeasonDeleted,
   markSeasonsDeleted,
+  saveFolderScanSnapshot,
   upsertEpisode,
   upsertMovie,
   upsertSeason,
@@ -51,9 +54,15 @@ export async function POST() {
     );
   }
 
+  const previousScanStates = listAllFolderScanStates();
+  const previousScanEntries = listAllFolderScanEntries();
   let scanned;
   try {
-    scanned = await scanLibrary(libraryRootPath);
+    scanned = await scanLibraryIncremental(
+      libraryRootPath,
+      previousScanStates,
+      previousScanEntries
+    );
   } catch (error) {
     return NextResponse.json(
       {
@@ -65,6 +74,7 @@ export async function POST() {
       { status: 500 }
     );
   }
+  const syncedAt = Date.now();
   let updated = 0;
   let notFound = 0;
   let errors = 0;
@@ -170,14 +180,14 @@ export async function POST() {
         tmdbData?.youtubeTrailerKey ?? existing?.youtubeTrailerKey ?? null,
       personalRating: existing?.personalRating ?? null,
       errorMessage,
-      lastSyncedAt: Date.now(),
+      lastSyncedAt: syncedAt,
     });
 
     updated += 1;
   }
 
   // Soft-delete any movies that were in the DB but not found on disk this sync.
-  const scannedMovieFolderPaths = new Set(scanned.movies.map((m) => m.folderPath));
+  const scannedMovieFolderPaths = new Set(scanned.currentMovieFolderPaths);
   const missingMovieFolderPaths = [...existingMovieFolderPaths].filter(
     (p) => !scannedMovieFolderPaths.has(p)
   );
@@ -279,7 +289,7 @@ export async function POST() {
       userGenres: existingUserGenres,
       personalRating: existing?.personalRating ?? null,
       errorMessage,
-      lastSyncedAt: Date.now(),
+      lastSyncedAt: syncedAt,
       xxxRated: existing?.xxxRated ?? 0,
       watched: existing?.watched ?? 0,
     });
@@ -299,7 +309,7 @@ export async function POST() {
         titleClean: episode.titleClean,
         filePath: episode.filePath,
         fileSizeBytes: episode.fileSizeBytes,
-        lastSyncedAt: Date.now(),
+        lastSyncedAt: syncedAt,
       });
     }
 
@@ -313,7 +323,7 @@ export async function POST() {
   }
 
   // Soft-delete any seasons that were in the DB but not found on disk this sync.
-  const scannedSeasonFolderPaths = new Set(scanned.seasons.map((s) => s.seasonFolderPath));
+  const scannedSeasonFolderPaths = new Set(scanned.currentSeasonFolderPaths);
   const missingSeasonFolderPaths = [...existingSeasonFolderPaths].filter(
     (p) => !scannedSeasonFolderPaths.has(p)
   );
@@ -322,16 +332,31 @@ export async function POST() {
     seasonsDeleted = missingSeasonFolderPaths.length;
   }
 
+  saveFolderScanSnapshot(
+    libraryRootPath,
+    scanned.scanStates,
+    scanned.scanEntries,
+    syncedAt
+  );
+
   return NextResponse.json({
+    mode: "incremental",
+    folders: {
+      checked: scanned.stats.rootFoldersChecked + scanned.stats.seasonFoldersChecked,
+      rootChecked: scanned.stats.rootFoldersChecked,
+      seasonChecked: scanned.stats.seasonFoldersChecked,
+      changed: scanned.stats.foldersChanged,
+      rescanned: scanned.stats.foldersRescanned,
+    },
     movies: {
-      scanned: scanned.movies.length,
+      scanned: scanned.currentMovieFolderPaths.length,
       updated,
       notFound,
       errors,
       deleted: moviesDeleted,
     },
     seasons: {
-      scanned: scanned.seasons.length,
+      scanned: scanned.currentSeasonFolderPaths.length,
       updated: seasonsUpdated,
       notFound: seasonsNotFound,
       errors: seasonsErrors,
@@ -339,4 +364,3 @@ export async function POST() {
     },
   });
 }
-
