@@ -38,7 +38,7 @@ export function Sidebar() {
             <Link
               key={item.label}
               href={item.href}
-              className={`mx-2 flex items-center gap-3 rounded-lg py-2 group-hover:px-3 text-sm font-medium transition-[padding,color,background-color] justify-center group-hover:justify-start ${
+              className={`mx-2 flex items-center gap-3 rounded-lg py-2 px-3 text-sm font-medium transition-[color,background-color] justify-start ${
                 item.isActive
                   ? "bg-accent-muted text-accent"
                   : "text-muted hover:bg-surface hover:text-foreground"
@@ -56,7 +56,7 @@ export function Sidebar() {
           </p>
           <Link
             href="/settings"
-            className={`mx-2 flex items-center gap-3 rounded-lg py-2 group-hover:px-3 text-sm font-medium transition-[padding,color,background-color] justify-center group-hover:justify-start ${
+            className={`mx-2 flex items-center gap-3 rounded-lg py-2 px-3 text-sm font-medium transition-[color,background-color] justify-start ${
               pathname === "/settings"
                 ? "bg-accent-muted text-accent"
                 : "text-muted hover:bg-surface hover:text-foreground"
