@@ -1,12 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { Search, RefreshCw, Menu } from "lucide-react";
+import { Search, RefreshCw, Menu, X } from "lucide-react";
 import { SearchableDropdown } from "./SearchableDropdown";
 import { useState } from "react";
 
 type WatchedFilter = "all" | "watched" | "unwatched";
 type MediaTypeFilter = "all" | "movies" | "series";
+
+type SyncProgress = {
+  phase: "scanning" | "movies" | "seasons" | "cleanup" | "saving";
+  current: number;
+  total: number;
+  title?: string;
+};
 
 type MainHeaderProps = {
   query: string;
@@ -27,8 +34,27 @@ type MainHeaderProps = {
   onSortChange: (value: "title" | "rating" | "recent") => void;
   onSync: () => void;
   syncing: boolean;
+  syncProgress?: SyncProgress | null;
+  onCancelSync?: () => void;
   libraryRootPath?: string | null;
 };
+
+function syncLabel(progress: SyncProgress | null | undefined): string {
+  if (!progress) return "Syncing...";
+  switch (progress.phase) {
+    case "scanning": return "Scanning…";
+    case "cleanup": return "Cleaning up…";
+    case "saving": return "Saving…";
+    case "movies":
+      return progress.total > 0
+        ? `Movies ${progress.current}/${progress.total}`
+        : "Movies…";
+    case "seasons":
+      return progress.total > 0
+        ? `Shows ${progress.current}/${progress.total}`
+        : "Shows…";
+  }
+}
 
 export function MainHeader({
   query,
@@ -49,6 +75,8 @@ export function MainHeader({
   onSortChange,
   onSync,
   syncing,
+  syncProgress,
+  onCancelSync,
   libraryRootPath,
 }: MainHeaderProps) {
   const [showFilters, setShowFilters] = useState(false);
@@ -83,25 +111,71 @@ export function MainHeader({
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4 ml-2">
-            <button
-              onClick={onSync}
-              disabled={syncing}
-              className="hidden sm:flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-              {syncing ? "Syncing..." : "Sync"}
-            </button>
-            <button
-              onClick={onSync}
-              disabled={syncing}
-              className="sm:hidden flex items-center justify-center p-2 rounded-full bg-accent text-white disabled:opacity-50"
-            >
-              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-            </button>
-            
+            {/* Desktop sync controls */}
+            <div className="hidden sm:flex items-center gap-2">
+              <button
+                onClick={onSync}
+                disabled={syncing}
+                className="flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+                {syncing ? syncLabel(syncProgress) : "Sync"}
+              </button>
+              {syncing && onCancelSync ? (
+                <button
+                  onClick={onCancelSync}
+                  title="Cancel sync"
+                  className="flex items-center justify-center rounded-full border border-border p-2 text-muted transition-colors hover:border-border-hover hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
 
+            {/* Mobile sync controls */}
+            <div className="sm:hidden flex items-center gap-1">
+              <button
+                onClick={onSync}
+                disabled={syncing}
+                className="flex items-center justify-center p-2 rounded-full bg-accent text-white disabled:opacity-70"
+              >
+                <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+              </button>
+              {syncing && onCancelSync ? (
+                <button
+                  onClick={onCancelSync}
+                  title="Cancel sync"
+                  className="flex items-center justify-center p-2 rounded-full border border-border text-muted"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
+
+        {/* Progress bar strip shown while syncing */}
+        {syncing ? (
+          <div className="border-t border-border/50 bg-accent/5 px-4 sm:px-6 py-2">
+            <div className="flex items-center gap-3">
+              <div className="flex-1 overflow-hidden rounded-full bg-border h-1">
+                {syncProgress && syncProgress.total > 0 ? (
+                  <div
+                    className="h-full bg-accent transition-all duration-300"
+                    style={{ width: `${Math.round((syncProgress.current / syncProgress.total) * 100)}%` }}
+                  />
+                ) : (
+                  <div className="h-full w-full bg-accent/40 animate-pulse" />
+                )}
+              </div>
+              <span className="shrink-0 text-xs text-muted tabular-nums">
+                {syncProgress?.title
+                  ? `${syncLabel(syncProgress)} — ${syncProgress.title}`
+                  : syncLabel(syncProgress)}
+              </span>
+            </div>
+          </div>
+        ) : null}
 
         {(showFilters || showMobileNav) && (
           <div className="border-t border-border bg-surface/50 px-4 sm:px-6 py-3">

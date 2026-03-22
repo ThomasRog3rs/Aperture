@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Clapperboard, FolderOpen, Loader2 } from "lucide-react";
 import { ContentRow } from "@/components/ContentRow";
@@ -13,13 +13,19 @@ import { StatusBanner } from "@/components/StatusBanner";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import type { MagnetSearchResult, Movie, Series } from "@/lib/types";
 
-type SyncSummary = {
-  scanned: number;
-  updated: number;
-  notFound: number;
-  errors: number;
-  deleted?: number;
+type SyncProgress = {
+  phase: "scanning" | "movies" | "seasons" | "cleanup" | "saving";
+  current: number;
+  total: number;
+  title?: string;
 };
+
+type SyncEvent =
+  | { type: "phase"; phase: SyncProgress["phase"] }
+  | { type: "progress"; phase: "movies" | "seasons"; current: number; total: number; title: string }
+  | { type: "complete"; summary: IncrementalSyncResponse }
+  | { type: "error"; error: string }
+  | { type: "cancelled" };
 
 type IncrementalSyncResponse = {
   mode?: "incremental";
@@ -30,8 +36,8 @@ type IncrementalSyncResponse = {
     changed: number;
     rescanned: number;
   };
-  movies: SyncSummary;
-  seasons: SyncSummary;
+  movies: { updated: number; notFound: number; errors: number; deleted?: number };
+  seasons: { updated: number; notFound: number; errors: number; deleted?: number };
   error?: string;
 };
 
@@ -74,6 +80,8 @@ export function LibraryView() {
   const [sort, setSort] = useState<"title" | "rating" | "recent">(initialSort);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
+  const syncAbortRef = useRef<AbortController | null>(null);
   const [notice, setNotice] = useState<{
     tone: "info" | "success" | "error";
     message: string;
@@ -171,20 +179,52 @@ export function LibraryView() {
 
   const handleSync = useCallback(async () => {
     setSyncing(true);
+    setSyncProgress({ phase: "scanning", current: 0, total: 0 });
     setNotice(null);
+
+    const abort = new AbortController();
+    syncAbortRef.current = abort;
+
     try {
-      const response = await fetch("/api/sync", { method: "POST" });
-      const data = (await response.json()) as
-        | (SyncSummary & { error?: string })
-        | IncrementalSyncResponse;
-      if (!response.ok) {
-        const error =
-          "error" in data && data.error ? data.error : "Sync failed.";
-        throw new Error(error);
-      }
-      const summary =
-        "movies" in data && "seasons" in data
-          ? {
+      const response = await fetch("/api/sync", {
+        method: "POST",
+        signal: abort.signal,
+      });
+
+      if (!response.body) throw new Error("No response body.");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          let event: SyncEvent;
+          try {
+            event = JSON.parse(line.slice(6)) as SyncEvent;
+          } catch {
+            continue;
+          }
+
+          if (event.type === "phase") {
+            setSyncProgress({ phase: event.phase, current: 0, total: 0 });
+          } else if (event.type === "progress") {
+            setSyncProgress({
+              phase: event.phase,
+              current: event.current,
+              total: event.total,
+              title: event.title,
+            });
+          } else if (event.type === "complete") {
+            const data = event.summary;
+            const summary = {
               updated: data.movies.updated + data.seasons.updated,
               notFound: data.movies.notFound + data.seasons.notFound,
               errors: data.movies.errors + data.seasons.errors,
@@ -192,44 +232,52 @@ export function LibraryView() {
               label: `${data.movies.updated} movies, ${data.seasons.updated} seasons`,
               foldersChecked: data.folders?.checked ?? null,
               foldersRescanned: data.folders?.rescanned ?? null,
-            }
-          : {
-              updated: data.updated,
-              notFound: data.notFound,
-              errors: data.errors,
-              deleted: data.deleted ?? 0,
-              label: `${data.updated} movies`,
-              foldersChecked: null,
-              foldersRescanned: null,
             };
-      const deletedPart = summary.deleted > 0 ? `, ${summary.deleted} deleted` : "";
-      const folderPart =
-        typeof summary.foldersChecked === "number" &&
-        typeof summary.foldersRescanned === "number"
-          ? ` Checked ${summary.foldersChecked} folders and rescanned ${summary.foldersRescanned}.`
-          : "";
-      setNotice({
-        tone: summary.errors > 0 ? "error" : "success",
-        message: `Synced ${summary.label} (${summary.notFound} not found${deletedPart}, ${summary.errors} errors).${folderPart}`,
-      });
-      await fetchLibrary();
-      fetchFilterOptions().catch(() => {
-        setNotice((current) =>
-          current?.tone === "success"
-            ? current
-            : { tone: "error", message: "Failed to refresh filters." }
-        );
-      });
+            const deletedPart = summary.deleted > 0 ? `, ${summary.deleted} deleted` : "";
+            const folderPart =
+              typeof summary.foldersChecked === "number" &&
+              typeof summary.foldersRescanned === "number"
+                ? ` Checked ${summary.foldersChecked} folders, rescanned ${summary.foldersRescanned}.`
+                : "";
+            setNotice({
+              tone: summary.errors > 0 ? "error" : "success",
+              message: `Synced ${summary.label} (${summary.notFound} not found${deletedPart}, ${summary.errors} errors).${folderPart}`,
+            });
+            await fetchLibrary();
+            fetchFilterOptions().catch(() => {
+              setNotice((current) =>
+                current?.tone === "success"
+                  ? current
+                  : { tone: "error", message: "Failed to refresh filters." }
+              );
+            });
+          } else if (event.type === "error") {
+            setNotice({ tone: "error", message: event.error });
+          } else if (event.type === "cancelled") {
+            setNotice({ tone: "info", message: "Sync cancelled." });
+          }
+        }
+      }
     } catch (error) {
-      setNotice({
-        tone: "error",
-        message:
-          error instanceof Error ? error.message : "Failed to sync library.",
-      });
+      if (error instanceof Error && error.name === "AbortError") {
+        setNotice({ tone: "info", message: "Sync cancelled." });
+      } else {
+        setNotice({
+          tone: "error",
+          message: error instanceof Error ? error.message : "Failed to sync library.",
+        });
+      }
     } finally {
       setSyncing(false);
+      setSyncProgress(null);
+      syncAbortRef.current = null;
     }
   }, [fetchFilterOptions, fetchLibrary]);
+
+  const handleCancelSync = useCallback(() => {
+    syncAbortRef.current?.abort();
+    fetch("/api/sync", { method: "DELETE" }).catch(() => {});
+  }, []);
 
   const handlePlay = useCallback((movie: Movie) => {
     router.push(`/movies/${movie.id}`);
@@ -494,6 +542,8 @@ export function LibraryView() {
         onSortChange={setSort}
         onSync={handleSync}
         syncing={syncing}
+        syncProgress={syncProgress}
+        onCancelSync={handleCancelSync}
         libraryRootPath={libraryRootPath}
       />
 

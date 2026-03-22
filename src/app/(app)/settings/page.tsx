@@ -1,19 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Folder, RefreshCw, Trash2, Play } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Folder, RefreshCw, Trash2, Play, X } from "lucide-react";
 import { StatusBanner } from "@/components/StatusBanner";
 
 type SettingsResponse = {
   libraryRootPath: string | null;
-};
-
-type SyncSummary = {
-  scanned: number;
-  updated: number;
-  notFound: number;
-  errors: number;
-  deleted?: number;
 };
 
 type IncrementalSyncResponse = {
@@ -25,10 +17,24 @@ type IncrementalSyncResponse = {
     changed: number;
     rescanned: number;
   };
-  movies: SyncSummary;
-  seasons: SyncSummary;
+  movies: { updated: number; notFound: number; errors: number; deleted?: number };
+  seasons: { updated: number; notFound: number; errors: number; deleted?: number };
   error?: string;
 };
+
+type SyncProgress = {
+  phase: "scanning" | "movies" | "seasons" | "cleanup" | "saving";
+  current: number;
+  total: number;
+  title?: string;
+};
+
+type SyncEvent =
+  | { type: "phase"; phase: SyncProgress["phase"] }
+  | { type: "progress"; phase: "movies" | "seasons"; current: number; total: number; title: string }
+  | { type: "complete"; summary: IncrementalSyncResponse }
+  | { type: "error"; error: string }
+  | { type: "cancelled" };
 
 type DeletedStats = {
   movies: number;
@@ -41,6 +47,8 @@ export default function SettingsPage() {
   const [libraryRootPath, setLibraryRootPath] = useState("");
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
+  const syncAbortRef = useRef<AbortController | null>(null);
   const [purging, setPurging] = useState(false);
   const [deletedStats, setDeletedStats] = useState<DeletedStats | null>(null);
   const [playerMode, setPlayerMode] = useState<"browser" | "external">("browser");
@@ -100,18 +108,51 @@ export default function SettingsPage() {
 
   const handleSync = async () => {
     setSyncing(true);
+    setSyncProgress({ phase: "scanning", current: 0, total: 0 });
     setNotice(null);
+
+    const abort = new AbortController();
+    syncAbortRef.current = abort;
+
     try {
-      const response = await fetch("/api/sync", { method: "POST" });
-      const data = (await response.json()) as
-        | (SyncSummary & { error?: string })
-        | IncrementalSyncResponse;
-      if (!response.ok) {
-        throw new Error(("error" in data && data.error) || "Failed to sync library.");
-      }
-      const summary =
-        "movies" in data && "seasons" in data
-          ? {
+      const response = await fetch("/api/sync", {
+        method: "POST",
+        signal: abort.signal,
+      });
+      if (!response.body) throw new Error("No response body.");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          let event: SyncEvent;
+          try {
+            event = JSON.parse(line.slice(6)) as SyncEvent;
+          } catch {
+            continue;
+          }
+
+          if (event.type === "phase") {
+            setSyncProgress({ phase: event.phase, current: 0, total: 0 });
+          } else if (event.type === "progress") {
+            setSyncProgress({
+              phase: event.phase,
+              current: event.current,
+              total: event.total,
+              title: event.title,
+            });
+          } else if (event.type === "complete") {
+            const data = event.summary;
+            const summary = {
               updated: data.movies.updated + data.seasons.updated,
               notFound: data.movies.notFound + data.seasons.notFound,
               errors: data.movies.errors + data.seasons.errors,
@@ -119,36 +160,44 @@ export default function SettingsPage() {
               label: `${data.movies.updated} movies, ${data.seasons.updated} seasons`,
               foldersChecked: data.folders?.checked ?? null,
               foldersRescanned: data.folders?.rescanned ?? null,
-            }
-          : {
-              updated: data.updated,
-              notFound: data.notFound,
-              errors: data.errors,
-              deleted: data.deleted ?? 0,
-              label: `${data.updated} movies`,
-              foldersChecked: null,
-              foldersRescanned: null,
             };
-      const deletedPart = summary.deleted > 0 ? `, ${summary.deleted} deleted` : "";
-      const folderPart =
-        typeof summary.foldersChecked === "number" &&
-        typeof summary.foldersRescanned === "number"
-          ? ` Checked ${summary.foldersChecked} folders and rescanned ${summary.foldersRescanned}.`
-          : "";
-      setNotice({
-        tone: summary.errors > 0 ? "error" : "success",
-        message: `Synced ${summary.label} (${summary.notFound} not found${deletedPart}, ${summary.errors} errors).${folderPart}`,
-      });
-      void fetchDeletedStats();
+            const deletedPart = summary.deleted > 0 ? `, ${summary.deleted} deleted` : "";
+            const folderPart =
+              typeof summary.foldersChecked === "number" &&
+              typeof summary.foldersRescanned === "number"
+                ? ` Checked ${summary.foldersChecked} folders, rescanned ${summary.foldersRescanned}.`
+                : "";
+            setNotice({
+              tone: summary.errors > 0 ? "error" : "success",
+              message: `Synced ${summary.label} (${summary.notFound} not found${deletedPart}, ${summary.errors} errors).${folderPart}`,
+            });
+            void fetchDeletedStats();
+          } else if (event.type === "error") {
+            setNotice({ tone: "error", message: event.error });
+          } else if (event.type === "cancelled") {
+            setNotice({ tone: "info", message: "Sync cancelled." });
+          }
+        }
+      }
     } catch (error) {
-      setNotice({
-        tone: "error",
-        message:
-          error instanceof Error ? error.message : "Failed to sync library.",
-      });
+      if (error instanceof Error && error.name === "AbortError") {
+        setNotice({ tone: "info", message: "Sync cancelled." });
+      } else {
+        setNotice({
+          tone: "error",
+          message: error instanceof Error ? error.message : "Failed to sync library.",
+        });
+      }
     } finally {
       setSyncing(false);
+      setSyncProgress(null);
+      syncAbortRef.current = null;
     }
+  };
+
+  const handleCancelSync = () => {
+    syncAbortRef.current?.abort();
+    fetch("/api/sync", { method: "DELETE" }).catch(() => {});
   };
 
   const handlePurgeDeleted = async () => {
@@ -225,8 +274,26 @@ export default function SettingsPage() {
               <RefreshCw
                 className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`}
               />
-              {syncing ? "Syncing..." : "Sync Library"}
+              {syncing
+                ? syncProgress
+                  ? syncProgress.phase === "movies" && syncProgress.total > 0
+                    ? `Movies ${syncProgress.current}/${syncProgress.total}…`
+                    : syncProgress.phase === "seasons" && syncProgress.total > 0
+                      ? `Shows ${syncProgress.current}/${syncProgress.total}…`
+                      : "Syncing…"
+                  : "Syncing…"
+                : "Sync Library"}
             </button>
+            {syncing ? (
+              <button
+                onClick={handleCancelSync}
+                title="Cancel sync"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+                Cancel
+              </button>
+            ) : null}
           </div>
 
           <div className="mt-6">
