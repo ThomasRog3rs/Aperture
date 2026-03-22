@@ -29,16 +29,16 @@ export function Sidebar() {
         </span>
       </div>
 
-      <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-6">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden py-6">
         <div className="space-y-1">
-          <p className={`px-2 text-xs font-semibold uppercase tracking-wider text-muted mb-2 ${labelClass}`}>
+          <p className={`px-4 text-xs font-semibold uppercase tracking-wider text-muted mb-2 ${labelClass}`}>
             Menu
           </p>
           {navItems.map((item) => (
             <Link
               key={item.label}
               href={item.href}
-              className={`flex items-center gap-3 rounded-lg py-2 px-3 text-sm font-medium transition-colors justify-center group-hover:justify-start ${
+              className={`mx-2 flex items-center gap-3 rounded-lg py-2 group-hover:px-3 text-sm font-medium transition-[padding,color,background-color] justify-center group-hover:justify-start ${
                 item.isActive
                   ? "bg-accent-muted text-accent"
                   : "text-muted hover:bg-surface hover:text-foreground"
@@ -51,12 +51,12 @@ export function Sidebar() {
         </div>
 
         <div className="mt-8 space-y-1">
-          <p className={`px-2 text-xs font-semibold uppercase tracking-wider text-muted mb-2 ${labelClass}`}>
+          <p className={`px-4 text-xs font-semibold uppercase tracking-wider text-muted mb-2 ${labelClass}`}>
             Settings
           </p>
           <Link
             href="/settings"
-            className={`flex items-center gap-3 rounded-lg py-2 px-3 text-sm font-medium transition-colors justify-center group-hover:justify-start ${
+            className={`mx-2 flex items-center gap-3 rounded-lg py-2 group-hover:px-3 text-sm font-medium transition-[padding,color,background-color] justify-center group-hover:justify-start ${
               pathname === "/settings"
                 ? "bg-accent-muted text-accent"
                 : "text-muted hover:bg-surface hover:text-foreground"
