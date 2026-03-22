@@ -2,12 +2,29 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Aperture, Home, Tv, Film, Settings } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Aperture, Home, Tv, Film, Settings, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+
+const STORAGE_KEY = "sidebar-open";
 
 export function Sidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const typeParam = searchParams.get("type");
+
+  const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored !== null) setIsOpen(stored === "true");
+  }, []);
+
+  const toggle = () => {
+    setIsOpen((prev) => {
+      localStorage.setItem(STORAGE_KEY, String(!prev));
+      return !prev;
+    });
+  };
 
   const navItems = [
     { label: "Home", href: "/", icon: Home, isActive: pathname === "/" && !typeParam },
@@ -15,12 +32,17 @@ export function Sidebar() {
     { label: "Movies", href: "/?type=movies", icon: Film, isActive: typeParam === "movies" },
   ];
 
-  const labelClass =
-    "whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[12rem] transition-[max-width] duration-300 ease-in-out opacity-0 group-hover:opacity-100";
+  const labelClass = `whitespace-nowrap overflow-hidden transition-[max-width,opacity] duration-300 ease-in-out ${
+    isOpen ? "max-w-[12rem] opacity-100" : "max-w-0 opacity-0"
+  }`;
 
   return (
-    <aside className="group fixed inset-y-0 left-0 z-40 hidden sm:flex w-16 hover:w-64 flex-col border-r border-border bg-background transition-[width] duration-300 ease-in-out overflow-hidden">
-      <div className="flex h-20 items-center gap-3 px-4">
+    <aside
+      className={`fixed inset-y-0 left-0 z-40 hidden sm:flex flex-col border-r border-border bg-background transition-[width] duration-300 ease-in-out overflow-hidden ${
+        isOpen ? "w-64" : "w-16"
+      }`}
+    >
+      <div className={`flex h-20 items-center px-4 ${isOpen ? "gap-3" : "justify-center"}`}>
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-white">
           <Aperture className="h-5 w-5" />
         </div>
@@ -38,7 +60,9 @@ export function Sidebar() {
             <Link
               key={item.label}
               href={item.href}
-              className={`mx-2 flex items-center gap-3 rounded-lg py-2 px-3 text-sm font-medium transition-[color,background-color] justify-start ${
+              className={`mx-2 flex items-center rounded-lg py-2 px-3 text-sm font-medium transition-[color,background-color] ${
+                isOpen ? "justify-start gap-3" : "justify-center"
+              } ${
                 item.isActive
                   ? "bg-accent-muted text-accent"
                   : "text-muted hover:bg-surface hover:text-foreground"
@@ -56,7 +80,9 @@ export function Sidebar() {
           </p>
           <Link
             href="/settings"
-            className={`mx-2 flex items-center gap-3 rounded-lg py-2 px-3 text-sm font-medium transition-[color,background-color] justify-start ${
+            className={`mx-2 flex items-center rounded-lg py-2 px-3 text-sm font-medium transition-[color,background-color] ${
+              isOpen ? "justify-start gap-3" : "justify-center"
+            } ${
               pathname === "/settings"
                 ? "bg-accent-muted text-accent"
                 : "text-muted hover:bg-surface hover:text-foreground"
@@ -68,8 +94,15 @@ export function Sidebar() {
         </div>
       </div>
 
-      <div className="px-4 py-6">
+      <div className={`border-t border-border flex flex-col ${isOpen ? "items-start px-4 py-4 gap-3" : "items-center py-4 gap-3"}`}>
         <p className={`text-xs text-faint ${labelClass}`}>Aperture v1.0</p>
+        <button
+          onClick={toggle}
+          aria-label={isOpen ? "Collapse sidebar" : "Expand sidebar"}
+          className="flex items-center justify-center rounded-lg p-2 text-muted hover:bg-surface hover:text-foreground transition-colors"
+        >
+          {isOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+        </button>
       </div>
     </aside>
   );
