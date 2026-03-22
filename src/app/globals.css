@@ -2,14 +2,14 @@
 
 :root {
   /* ── Backgrounds ─────────────────────── */
-  --background: #0f1115;
-  --foreground: #f1f3f5;
+  --background: #160b0e;
+  --foreground: #fff0f0;
 
   /* ── Surface & borders ───────────────── */
-  --surface: rgba(255, 255, 255, 0.03);
-  --surface-strong: rgba(255, 255, 255, 0.06);
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-hover: rgba(255, 255, 255, 0.15);
+  --surface: rgba(255, 200, 200, 0.03);
+  --surface-strong: rgba(255, 200, 200, 0.06);
+  --border-color: rgba(255, 220, 220, 0.08);
+  --border-hover: rgba(255, 220, 220, 0.15);
 
   /* ── Accent (red) ────────────────────── */
   --accent: #e50914;
@@ -99,9 +99,9 @@ img {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 220, 220, 0.12);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 220, 220, 0.22);
 }
