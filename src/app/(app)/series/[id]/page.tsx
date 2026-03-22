@@ -525,6 +525,16 @@ export default function SeriesDetailPage() {
     }
   }, [router, series]);
 
+  const continueEpisode = useMemo(() => {
+    const firstUnwatched = orderedEpisodes.find(({ episode }) => !episode.watched);
+    return (firstUnwatched ?? orderedEpisodes[0])?.episode ?? null;
+  }, [orderedEpisodes]);
+
+  const allWatched = useMemo(
+    () => orderedEpisodes.length > 0 && orderedEpisodes.every(({ episode }) => episode.watched),
+    [orderedEpisodes]
+  );
+
   const seasonSummary = useMemo(() => {
     if (!series) return "";
     return `${series.seasonCount} ${series.seasonCount === 1 ? "season" : "seasons"}`;
@@ -620,6 +630,16 @@ export default function SeriesDetailPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3 mt-4">
+              {continueEpisode && (
+                <button
+                  onClick={() => playEpisode(continueEpisode)}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-white text-black font-semibold hover:bg-white/90 transition-colors shadow-lg"
+                >
+                  <Play className="h-4 w-4 fill-current" />
+                  {allWatched ? "Watch Again" : "Continue"}
+                </button>
+              )}
+
               <div className="flex-1" />
               
               <button
