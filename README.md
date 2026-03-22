@@ -8,7 +8,7 @@ A local-first movie and TV library manager for macOS, Linux, and Windows. It sca
 
 - **Movies** — One folder per movie; the largest video file is used. Metadata (poster, cast, genres, runtime, rating) is fetched from OMDb. You can rate titles (0–10), mark as watched, and play with one click.
 - **TV series** — Organise shows as **Show folder → Season folders → episode files**. Seasons are detected by folder names (`Season 1`, `S1`, `1`); episodes by filenames (`S01E01`, `1x01`, `E01`, `101`). Each season gets OMDb metadata; episodes are listed with optional watched state.
-- **Library sync** — **Sync Library** scans your library path, discovers movies and series, matches them to OMDb, and stores everything in a local SQLite database. Re-run sync to pick up new or changed folders. Any movie or TV season that is no longer found on disk is automatically **marked as deleted** and hidden from the library. Deleted items are retained in the database (so ratings and watched state are preserved) until you purge them from Settings.
+- **Library sync** — **Sync Library** scans your library path, discovers movies and series, matches them to OMDb, and stores everything in a local SQLite database. Re-run sync to pick up new or changed folders. Sync now keeps cached folder state in SQLite so repeat runs can check folder mtimes and tracked media-file metadata, then only deep-rescan folders that actually changed. Any movie or TV season that is no longer found on disk is automatically **marked as deleted** and hidden from the library. Deleted items are retained in the database (so ratings and watched state are preserved) until you purge them from Settings.
 - **Search & filters** — Search by title; filter by genre, cast/director/writer, personal rating (min), and watched status. Sort by rating, recently synced, or title. Switch between All, Movies, and TV Shows in the sidebar.
 - **Personal ratings & watched** — Rate movies and seasons (0–10). Mark movies or individual episodes as watched; filter the library by watched/unwatched.
 - **Folder images** — Use custom artwork by placing an image (e.g. `poster.jpg`, `cover.png`, `folder.jpg`) inside a movie or series folder. The app prefers names like `poster`, `cover`, `folder`, `front`. Supported: `.jpg`, `.jpeg`, `.png`, `.webp`, `.avif`.
@@ -58,7 +58,7 @@ A local-first movie and TV library manager for macOS, Linux, and Windows. It sca
 
 5. **Sync**
 
-   Click **Sync Library** (from the main library view or Settings). The app will scan the library, match titles to OMDb, and build the grid. Re-run sync whenever you add or change folders.
+   Click **Sync Library** (from the main library view or Settings). The app will scan the library, match titles to OMDb, and build the grid. After the first full-ish pass, later syncs reuse cached folder state so Aperture can quickly check the library and only deep-rescan folders that changed.
 
 ### Production build
 

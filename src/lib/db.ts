@@ -118,6 +118,37 @@ function ensureSchema(db: DbInstance) {
     CREATE INDEX IF NOT EXISTS idx_series_title_clean ON series (titleClean);
     CREATE INDEX IF NOT EXISTS idx_series_folder_path ON series (seriesFolderPath);
     CREATE INDEX IF NOT EXISTS idx_episodes_season_id ON episodes (seasonId);
+
+    CREATE TABLE IF NOT EXISTS sync_roots (
+      rootPath TEXT PRIMARY KEY,
+      lastSyncedAt INTEGER NOT NULL,
+      lastFullSyncedAt INTEGER NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS folder_scan_state (
+      folderPath TEXT PRIMARY KEY,
+      folderType TEXT NOT NULL,
+      parentFolderPath TEXT NULL,
+      dirMtimeMs REAL NOT NULL,
+      fingerprint TEXT NOT NULL,
+      lastSeenAt INTEGER NOT NULL,
+      lastScannedAt INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS folder_scan_entries (
+      folderPath TEXT NOT NULL,
+      entryPath TEXT NOT NULL,
+      sizeBytes INTEGER NOT NULL,
+      mtimeMs REAL NOT NULL,
+      PRIMARY KEY (folderPath, entryPath)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_folder_scan_state_parent
+      ON folder_scan_state (parentFolderPath);
+    CREATE INDEX IF NOT EXISTS idx_folder_scan_state_type
+      ON folder_scan_state (folderType);
+    CREATE INDEX IF NOT EXISTS idx_folder_scan_entries_folder
+      ON folder_scan_entries (folderPath);
   `);
 
   const columns = db
@@ -223,6 +254,27 @@ function ensureSchema(db: DbInstance) {
   if (!episodeColNames.has("watchProgressSeconds")) {
     db.exec("ALTER TABLE episodes ADD COLUMN watchProgressSeconds INTEGER DEFAULT 0");
   }
+
+  const scanStateCols = db
+    .prepare("PRAGMA table_info(folder_scan_state)")
+    .all() as Array<{ name: string }>;
+  const scanStateColNames = new Set(scanStateCols.map((column) => column.name));
+  if (!scanStateColNames.has("lastSeenAt")) {
+    db.exec("ALTER TABLE folder_scan_state ADD COLUMN lastSeenAt INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!scanStateColNames.has("lastScannedAt")) {
+    db.exec(
+      "ALTER TABLE folder_scan_state ADD COLUMN lastScannedAt INTEGER NOT NULL DEFAULT 0"
+    );
+  }
+
+  const syncRootCols = db
+    .prepare("PRAGMA table_info(sync_roots)")
+    .all() as Array<{ name: string }>;
+  const syncRootColNames = new Set(syncRootCols.map((column) => column.name));
+  if (!syncRootColNames.has("lastFullSyncedAt")) {
+    db.exec("ALTER TABLE sync_roots ADD COLUMN lastFullSyncedAt INTEGER NULL");
+  }
 }
 
 export function getDb(): DbInstance {
@@ -239,4 +291,3 @@ export function getDb(): DbInstance {
   globalForDb.__apertureDb = db;
   return db;
 }
-
