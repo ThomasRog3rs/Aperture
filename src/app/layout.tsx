@@ -1,17 +1,15 @@
 import type { Metadata } from "next";
-import { DM_Sans, Geist_Mono, Playfair_Display } from "next/font/google";
+import { Fraunces, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const bodySans = DM_Sans({
+const bodySans = Geist({
   variable: "--font-body-sans",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
 });
 
-const displaySerif = Playfair_Display({
+const displaySerif = Fraunces({
   variable: "--font-display-serif",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
