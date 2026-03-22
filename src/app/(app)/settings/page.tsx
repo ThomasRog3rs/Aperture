@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Folder, RefreshCw, Trash2, Play, X } from "lucide-react";
+import { Folder, RefreshCw, Trash2, Play, X, Film, Tv, RotateCcw } from "lucide-react";
 import { StatusBanner } from "@/components/StatusBanner";
+import { Modal } from "@/components/Modal";
 
 type SettingsResponse = {
   libraryRootPath: string | null;
@@ -43,14 +44,59 @@ type DeletedStats = {
   total: number;
 };
 
+type DeletedMovieRow = {
+  id: string;
+  titleClean: string;
+  folderPath: string;
+  posterPath: string | null;
+  year: number | null;
+  deletedAt: number;
+};
+
+type DeletedSeasonRow = {
+  id: string;
+  titleClean: string;
+  seasonFolderPath: string;
+  posterPath: string | null;
+  seasonNumber: number | null;
+  deletedAt: number;
+  deletedEpisodeCount: number;
+};
+
+type DeletedItems = {
+  movies: DeletedMovieRow[];
+  seasons: DeletedSeasonRow[];
+};
+
+type PurgeConfirm = {
+  movieIds: string[];
+  seasonIds: string[];
+  titles: string[];
+  isAll: boolean;
+};
+
+function formatDeletedDate(ts: number): string {
+  const d = new Date(ts);
+  const now = Date.now();
+  const diffDays = Math.floor((now - ts) / 86_400_000);
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
 export default function SettingsPage() {
   const [libraryRootPath, setLibraryRootPath] = useState("");
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const syncAbortRef = useRef<AbortController | null>(null);
-  const [purging, setPurging] = useState(false);
   const [deletedStats, setDeletedStats] = useState<DeletedStats | null>(null);
+  const [deletedItems, setDeletedItems] = useState<DeletedItems | null>(null);
+  const [selectedMovieIds, setSelectedMovieIds] = useState<Set<string>>(new Set());
+  const [selectedSeasonIds, setSelectedSeasonIds] = useState<Set<string>>(new Set());
+  const [purgeConfirm, setPurgeConfirm] = useState<PurgeConfirm | null>(null);
+  const [actionInProgress, setActionInProgress] = useState(false);
   const [playerMode, setPlayerMode] = useState<"browser" | "external">("browser");
   const [savingPlayer, setSavingPlayer] = useState(false);
   const [notice, setNotice] = useState<{
@@ -68,6 +114,20 @@ export default function SettingsPage() {
     }
   }, []);
 
+  const fetchDeletedItems = useCallback(async () => {
+    try {
+      const response = await fetch("/api/deleted-items");
+      const data = (await response.json()) as DeletedItems;
+      setDeletedItems(data);
+    } catch {
+      // Non-critical
+    }
+  }, []);
+
+  const refreshDeleted = useCallback(async () => {
+    await Promise.all([fetchDeletedStats(), fetchDeletedItems()]);
+  }, [fetchDeletedStats, fetchDeletedItems]);
+
   useEffect(() => {
     fetch("/api/settings")
       .then((response) => response.json())
@@ -78,8 +138,8 @@ export default function SettingsPage() {
       .catch(() => {
         setNotice({ tone: "error", message: "Failed to load settings." });
       });
-    void fetchDeletedStats();
-  }, [fetchDeletedStats]);
+    void refreshDeleted();
+  }, [refreshDeleted]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -171,7 +231,7 @@ export default function SettingsPage() {
               tone: summary.errors > 0 ? "error" : "success",
               message: `Synced ${summary.label} (${summary.notFound} not found${deletedPart}, ${summary.errors} errors).${folderPart}`,
             });
-            void fetchDeletedStats();
+            void refreshDeleted();
           } else if (event.type === "error") {
             setNotice({ tone: "error", message: event.error });
           } else if (event.type === "cancelled") {
@@ -200,29 +260,180 @@ export default function SettingsPage() {
     fetch("/api/sync", { method: "DELETE" }).catch(() => {});
   };
 
-  const handlePurgeDeleted = async () => {
-    setPurging(true);
+  const executePurge = async (movieIds: string[], seasonIds: string[]) => {
+    setActionInProgress(true);
+    setPurgeConfirm(null);
     setNotice(null);
     try {
-      const response = await fetch("/api/purge-deleted", { method: "POST" });
-      const data = (await response.json()) as { purged: number; error?: string };
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to purge deleted items.");
+      const requests: Promise<Response>[] = [];
+      if (movieIds.length > 0) {
+        requests.push(
+          fetch("/api/purge-deleted", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "movie", ids: movieIds }),
+          })
+        );
       }
+      if (seasonIds.length > 0) {
+        requests.push(
+          fetch("/api/purge-deleted", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "season", ids: seasonIds }),
+          })
+        );
+      }
+      if (requests.length === 0) {
+        // Purge all
+        requests.push(fetch("/api/purge-deleted", { method: "POST" }));
+      }
+      await Promise.all(requests);
+      const total = movieIds.length + seasonIds.length;
       setNotice({
         tone: "success",
-        message: `Permanently removed ${data.purged} deleted item${data.purged === 1 ? "" : "s"} from the database.`,
-      });
-      void fetchDeletedStats();
-    } catch (error) {
-      setNotice({
-        tone: "error",
         message:
-          error instanceof Error ? error.message : "Failed to purge deleted items.",
+          total > 0
+            ? `Permanently removed ${total} item${total === 1 ? "" : "s"} from the database.`
+            : "All deleted items permanently removed from the database.",
       });
+      setSelectedMovieIds(new Set());
+      setSelectedSeasonIds(new Set());
+      void refreshDeleted();
+    } catch {
+      setNotice({ tone: "error", message: "Failed to purge items." });
     } finally {
-      setPurging(false);
+      setActionInProgress(false);
     }
+  };
+
+  const handleConfirmPurge = () => {
+    if (!purgeConfirm) return;
+    if (purgeConfirm.isAll) {
+      void executePurge([], []);
+    } else {
+      void executePurge(purgeConfirm.movieIds, purgeConfirm.seasonIds);
+    }
+  };
+
+  const openPurgeConfirm = (movieIds: string[], seasonIds: string[], isAll: boolean) => {
+    const movieTitles =
+      deletedItems?.movies.filter((m) => movieIds.includes(m.id)).map((m) => m.titleClean) ?? [];
+    const seasonTitles =
+      deletedItems?.seasons.filter((s) => seasonIds.includes(s.id)).map((s) => s.titleClean) ?? [];
+    setPurgeConfirm({
+      movieIds,
+      seasonIds,
+      titles: [...movieTitles, ...seasonTitles],
+      isAll,
+    });
+  };
+
+  const handleRestoreItems = async (type: "movie" | "season", ids: string[]) => {
+    if (ids.length === 0) return;
+    setActionInProgress(true);
+    setNotice(null);
+    try {
+      const response = await fetch("/api/restore-deleted", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, ids }),
+      });
+      const data = (await response.json()) as { restored: number };
+      setNotice({
+        tone: "success",
+        message: `Restored ${data.restored} item${data.restored === 1 ? "" : "s"}.`,
+      });
+      if (type === "movie") {
+        setSelectedMovieIds((prev) => {
+          const next = new Set(prev);
+          ids.forEach((id) => next.delete(id));
+          return next;
+        });
+      } else {
+        setSelectedSeasonIds((prev) => {
+          const next = new Set(prev);
+          ids.forEach((id) => next.delete(id));
+          return next;
+        });
+      }
+      void refreshDeleted();
+    } catch {
+      setNotice({ tone: "error", message: "Failed to restore items." });
+    } finally {
+      setActionInProgress(false);
+    }
+  };
+
+  const totalSelected = selectedMovieIds.size + selectedSeasonIds.size;
+
+  const handleRestoreSelected = async () => {
+    const movieIds = [...selectedMovieIds];
+    const seasonIds = [...selectedSeasonIds];
+    if (movieIds.length === 0 && seasonIds.length === 0) return;
+    setActionInProgress(true);
+    setNotice(null);
+    try {
+      const requests: Promise<Response>[] = [];
+      if (movieIds.length > 0) {
+        requests.push(
+          fetch("/api/restore-deleted", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "movie", ids: movieIds }),
+          })
+        );
+      }
+      if (seasonIds.length > 0) {
+        requests.push(
+          fetch("/api/restore-deleted", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "season", ids: seasonIds }),
+          })
+        );
+      }
+      await Promise.all(requests);
+      const total = movieIds.length + seasonIds.length;
+      setNotice({ tone: "success", message: `Restored ${total} item${total === 1 ? "" : "s"}.` });
+      setSelectedMovieIds(new Set());
+      setSelectedSeasonIds(new Set());
+      void refreshDeleted();
+    } catch {
+      setNotice({ tone: "error", message: "Failed to restore items." });
+    } finally {
+      setActionInProgress(false);
+    }
+  };
+
+  const toggleMovie = (id: string) => {
+    setSelectedMovieIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) { next.delete(id); } else { next.add(id); }
+      return next;
+    });
+  };
+
+  const toggleSeason = (id: string) => {
+    setSelectedSeasonIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) { next.delete(id); } else { next.add(id); }
+      return next;
+    });
+  };
+
+  const toggleAllMovies = () => {
+    if (!deletedItems) return;
+    const allIds = deletedItems.movies.map((m) => m.id);
+    const allSelected = allIds.every((id) => selectedMovieIds.has(id));
+    setSelectedMovieIds(allSelected ? new Set() : new Set(allIds));
+  };
+
+  const toggleAllSeasons = () => {
+    if (!deletedItems) return;
+    const allIds = deletedItems.seasons.map((s) => s.id);
+    const allSelected = allIds.every((id) => selectedSeasonIds.has(id));
+    setSelectedSeasonIds(allSelected ? new Set() : new Set(allIds));
   };
 
   return (
@@ -320,11 +531,14 @@ export default function SettingsPage() {
           </div>
 
           <div className="mt-6">
-            {deletedStats !== null ? (
-              deletedStats.total === 0 ? (
-                <p className="text-sm text-muted">No deleted items in the database.</p>
-              ) : (
-                <div className="flex flex-col gap-4">
+            {deletedStats === null ? (
+              <p className="text-sm text-muted">Loading…</p>
+            ) : deletedStats.total === 0 ? (
+              <p className="text-sm text-muted">No deleted items in the database.</p>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {/* Summary + Purge All */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-sm text-muted">
                     <span className="font-semibold text-foreground">{deletedStats.total}</span>{" "}
                     deleted item{deletedStats.total === 1 ? "" : "s"} retained in the database
@@ -333,17 +547,227 @@ export default function SettingsPage() {
                     {deletedStats.episodes} episode{deletedStats.episodes === 1 ? "" : "s"}).
                   </p>
                   <button
-                    onClick={handlePurgeDeleted}
-                    disabled={purging}
-                    className="inline-flex w-fit items-center gap-2 rounded-lg border border-red-500/30 px-5 py-2 text-sm text-red-400 transition-colors hover:border-red-500/60 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() =>
+                      openPurgeConfirm(
+                        deletedItems?.movies.map((m) => m.id) ?? [],
+                        deletedItems?.seasons.map((s) => s.id) ?? [],
+                        true
+                      )
+                    }
+                    disabled={actionInProgress}
+                    className="inline-flex items-center gap-2 rounded-lg border border-red-500/30 px-4 py-2 text-sm text-red-400 transition-colors hover:border-red-500/60 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <Trash2 className="h-4 w-4" />
-                    {purging ? "Purging..." : `Purge ${deletedStats.total} deleted item${deletedStats.total === 1 ? "" : "s"}`}
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Purge all
                   </button>
                 </div>
-              )
-            ) : (
-              <p className="text-sm text-muted">Loading…</p>
+
+                {/* Bulk action bar */}
+                {totalSelected > 0 && (
+                  <div className="flex flex-wrap items-center gap-3 rounded-lg border border-accent/20 bg-accent-muted px-4 py-2.5">
+                    <span className="text-sm font-medium text-accent">
+                      {totalSelected} selected
+                    </span>
+                    <button
+                      onClick={() => void handleRestoreSelected()}
+                      disabled={actionInProgress}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-accent/30 px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:border-accent/60 disabled:opacity-50"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Restore selected
+                    </button>
+                    <button
+                      onClick={() =>
+                        openPurgeConfirm([...selectedMovieIds], [...selectedSeasonIds], false)
+                      }
+                      disabled={actionInProgress}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-red-500/30 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:border-red-500/60 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Purge selected
+                    </button>
+                  </div>
+                )}
+
+                {/* Item list */}
+                {deletedItems === null ? (
+                  <p className="text-sm text-muted">Loading items…</p>
+                ) : (
+                  <div className="flex flex-col gap-6">
+                    {/* Movies group */}
+                    {deletedItems.movies.length > 0 && (
+                      <div>
+                        <div className="mb-2 flex items-center gap-2 border-b border-border pb-2">
+                          <input
+                            type="checkbox"
+                            checked={
+                              deletedItems.movies.length > 0 &&
+                              deletedItems.movies.every((m) => selectedMovieIds.has(m.id))
+                            }
+                            onChange={toggleAllMovies}
+                            className="h-4 w-4 cursor-pointer accent-accent"
+                          />
+                          <Film className="h-4 w-4 text-muted" />
+                          <span className="text-xs font-semibold uppercase tracking-widest text-muted">
+                            Movies ({deletedItems.movies.length})
+                          </span>
+                        </div>
+                        <div className="divide-y divide-border/40">
+                          {deletedItems.movies.map((movie) => (
+                            <div key={movie.id} className="flex items-center gap-3 py-3">
+                              <input
+                                type="checkbox"
+                                checked={selectedMovieIds.has(movie.id)}
+                                onChange={() => toggleMovie(movie.id)}
+                                className="h-4 w-4 shrink-0 cursor-pointer accent-accent"
+                              />
+                              {movie.posterPath ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={movie.posterPath}
+                                  alt=""
+                                  className="h-12 w-8 shrink-0 rounded object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-12 w-8 shrink-0 items-center justify-center rounded bg-surface-strong">
+                                  <Film className="h-4 w-4 text-faint" />
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium text-foreground">
+                                  {movie.titleClean}
+                                  {movie.year ? (
+                                    <span className="ml-1.5 text-xs text-muted">
+                                      ({movie.year})
+                                    </span>
+                                  ) : null}
+                                </p>
+                                <p className="truncate text-xs text-faint" title={movie.folderPath}>
+                                  {movie.folderPath}
+                                </p>
+                                <p className="text-xs text-faint/70">
+                                  Deleted {formatDeletedDate(movie.deletedAt)}
+                                </p>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-2">
+                                <button
+                                  onClick={() => void handleRestoreItems("movie", [movie.id])}
+                                  disabled={actionInProgress}
+                                  title="Restore"
+                                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted transition-colors hover:border-accent/40 hover:text-accent disabled:opacity-50"
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                  Restore
+                                </button>
+                                <button
+                                  onClick={() => openPurgeConfirm([movie.id], [], false)}
+                                  disabled={actionInProgress}
+                                  title="Purge"
+                                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted transition-colors hover:border-red-500/40 hover:text-red-400 disabled:opacity-50"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                  Purge
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Seasons group */}
+                    {deletedItems.seasons.length > 0 && (
+                      <div>
+                        <div className="mb-2 flex items-center gap-2 border-b border-border pb-2">
+                          <input
+                            type="checkbox"
+                            checked={
+                              deletedItems.seasons.length > 0 &&
+                              deletedItems.seasons.every((s) => selectedSeasonIds.has(s.id))
+                            }
+                            onChange={toggleAllSeasons}
+                            className="h-4 w-4 cursor-pointer accent-accent"
+                          />
+                          <Tv className="h-4 w-4 text-muted" />
+                          <span className="text-xs font-semibold uppercase tracking-widest text-muted">
+                            Seasons ({deletedItems.seasons.length})
+                          </span>
+                        </div>
+                        <div className="divide-y divide-border/40">
+                          {deletedItems.seasons.map((season) => (
+                            <div key={season.id} className="flex items-center gap-3 py-3">
+                              <input
+                                type="checkbox"
+                                checked={selectedSeasonIds.has(season.id)}
+                                onChange={() => toggleSeason(season.id)}
+                                className="h-4 w-4 shrink-0 cursor-pointer accent-accent"
+                              />
+                              {season.posterPath ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={season.posterPath}
+                                  alt=""
+                                  className="h-12 w-8 shrink-0 rounded object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-12 w-8 shrink-0 items-center justify-center rounded bg-surface-strong">
+                                  <Tv className="h-4 w-4 text-faint" />
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-baseline gap-2">
+                                  <p className="truncate text-sm font-medium text-foreground">
+                                    {season.titleClean}
+                                  </p>
+                                  {season.seasonNumber !== null ? (
+                                    <span className="shrink-0 text-xs text-muted">
+                                      S{String(season.seasonNumber).padStart(2, "0")}
+                                    </span>
+                                  ) : null}
+                                  {season.deletedEpisodeCount > 0 ? (
+                                    <span className="shrink-0 rounded-full bg-surface-strong px-1.5 py-0.5 text-xs text-faint">
+                                      {season.deletedEpisodeCount} ep{season.deletedEpisodeCount === 1 ? "" : "s"}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <p
+                                  className="truncate text-xs text-faint"
+                                  title={season.seasonFolderPath}
+                                >
+                                  {season.seasonFolderPath}
+                                </p>
+                                <p className="text-xs text-faint/70">
+                                  Deleted {formatDeletedDate(season.deletedAt)}
+                                </p>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-2">
+                                <button
+                                  onClick={() => void handleRestoreItems("season", [season.id])}
+                                  disabled={actionInProgress}
+                                  title="Restore"
+                                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted transition-colors hover:border-accent/40 hover:text-accent disabled:opacity-50"
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                  Restore
+                                </button>
+                                <button
+                                  onClick={() => openPurgeConfirm([], [season.id], false)}
+                                  disabled={actionInProgress}
+                                  title="Purge"
+                                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted transition-colors hover:border-red-500/40 hover:text-red-400 disabled:opacity-50"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                  Purge
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -441,6 +865,47 @@ export default function SettingsPage() {
           </ul>
         </div>
       </div>
+
+      {/* Purge confirmation modal */}
+      <Modal
+        isOpen={purgeConfirm !== null}
+        onClose={() => setPurgeConfirm(null)}
+        title="Confirm permanent deletion"
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-muted">
+            {purgeConfirm?.isAll
+              ? `This will permanently delete all ${deletedStats?.total ?? 0} deleted item${(deletedStats?.total ?? 0) === 1 ? "" : "s"} from the database. This cannot be undone.`
+              : `This will permanently delete the following ${purgeConfirm?.titles.length ?? 0} item${(purgeConfirm?.titles.length ?? 0) === 1 ? "" : "s"} from the database. This cannot be undone.`}
+          </p>
+          {purgeConfirm && !purgeConfirm.isAll && purgeConfirm.titles.length > 0 && (
+            <ul className="max-h-48 overflow-y-auto rounded-lg border border-border bg-background px-4 py-3 text-sm">
+              {purgeConfirm.titles.map((title, i) => (
+                <li key={i} className="py-1 text-foreground">
+                  {title}
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              onClick={() => setPurgeConfirm(null)}
+              className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmPurge}
+              disabled={actionInProgress}
+              className="inline-flex items-center gap-2 rounded-lg bg-red-500/80 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              {purgeConfirm?.isAll ? "Purge all" : `Purge ${purgeConfirm?.titles.length ?? 0} item${(purgeConfirm?.titles.length ?? 0) === 1 ? "" : "s"}`}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
+

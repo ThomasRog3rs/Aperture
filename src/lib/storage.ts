@@ -1132,6 +1132,60 @@ export function markSeasonDeleted(id: string) {
   ).run(Date.now(), id);
 }
 
+export type DeletedMovieRow = MovieRow & { deletedAt: number };
+export type DeletedSeasonRow = SeasonRow & { deletedAt: number; deletedEpisodeCount: number };
+
+export function listDeletedMovies(): DeletedMovieRow[] {
+  const db = getDb();
+  return db
+    .prepare("SELECT * FROM movies WHERE deletedAt IS NOT NULL ORDER BY deletedAt DESC")
+    .all() as DeletedMovieRow[];
+}
+
+export function listDeletedSeasons(): DeletedSeasonRow[] {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT s.*, COUNT(e.id) as deletedEpisodeCount
+       FROM seasons s
+       LEFT JOIN episodes e ON e.seasonId = s.id AND e.deletedAt IS NOT NULL
+       WHERE s.deletedAt IS NOT NULL
+       GROUP BY s.id
+       ORDER BY s.deletedAt DESC`
+    )
+    .all() as DeletedSeasonRow[];
+}
+
+export function purgeMoviesByIds(ids: string[]) {
+  if (ids.length === 0) return;
+  const db = getDb();
+  const placeholders = ids.map(() => "?").join(", ");
+  db.prepare(`DELETE FROM movies WHERE id IN (${placeholders})`).run(...ids);
+}
+
+export function purgeSeasonsByIds(ids: string[]) {
+  if (ids.length === 0) return;
+  const db = getDb();
+  const placeholders = ids.map(() => "?").join(", ");
+  db.prepare(`DELETE FROM episodes WHERE seasonId IN (${placeholders})`).run(...ids);
+  db.prepare(`DELETE FROM seasons WHERE id IN (${placeholders})`).run(...ids);
+}
+
+export function restoreMoviesByIds(ids: string[]) {
+  if (ids.length === 0) return;
+  const db = getDb();
+  const placeholders = ids.map(() => "?").join(", ");
+  db.prepare(`UPDATE movies SET deletedAt = NULL WHERE id IN (${placeholders})`).run(...ids);
+}
+
+export function restoreSeasonsByIds(ids: string[]) {
+  if (ids.length === 0) return;
+  const db = getDb();
+  const placeholders = ids.map(() => "?").join(", ");
+  db.prepare(`UPDATE seasons SET deletedAt = NULL WHERE id IN (${placeholders})`).run(...ids);
+  db.prepare(`UPDATE episodes SET deletedAt = NULL WHERE seasonId IN (${placeholders})`).run(...ids);
+}
+
 export function countDeletedItems(): {
   movies: number;
   seasons: number;
