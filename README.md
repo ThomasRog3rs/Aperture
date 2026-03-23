@@ -2,7 +2,7 @@
 
 A local-first movie and TV library manager for macOS, Linux, and Windows. It scans your disk, enriches metadata from OMDb/TMDB, and plays media in your default video player.
 
-![Aperture screenshot](/Screenshot%202026-03-06%20at%2022.14.35.png)
+![Aperture screenshot](/demo.png)
 
 ## Features
 
