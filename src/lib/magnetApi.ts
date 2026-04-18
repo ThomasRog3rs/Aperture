@@ -1,3 +1,4 @@
+import { getSetting } from "./storage";
 import type { MagnetApiRawResult, MagnetSearchResult } from "@/lib/types";
 
 const DEFAULT_MAGNET_API_BASE_URL = "http://localhost:8000";
@@ -7,7 +8,9 @@ function trimTrailingSlash(value: string) {
 }
 
 export function getMagnetApiBaseUrl() {
+  // DB-stored URL takes precedence; env vars are developer fallbacks.
   const configured =
+    getSetting("magnetApiBaseUrl") ||
     process.env.MAGNET_API_BASE_URL?.trim() ||
     process.env.NEXT_PUBLIC_MAGNET_API_BASE_URL?.trim() ||
     DEFAULT_MAGNET_API_BASE_URL;
