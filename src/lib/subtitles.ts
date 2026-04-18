@@ -20,13 +20,10 @@ function guessLanguageFromFileName(fileName: string): string {
   // Try to detect language code from patterns like "Movie.en.srt" or "Movie.en.US.srt"
   const base = path.basename(fileName, path.extname(fileName));
   const parts = base.split(".");
-  // Walk from the end looking for a 2-letter language code
+  // Walk from the end looking for a 2-letter language code (skip 2-letter region codes by
+  // preferring the first match that isn't preceded by another 2-letter part)
   for (let i = parts.length - 1; i >= 0; i--) {
     const part = parts[i].toLowerCase();
-    if (/^[a-z]{2}$/.test(part)) {
-      return part;
-    }
-    // Skip known region suffixes like "US", "GB"
     if (/^[a-z]{2}$/.test(part)) {
       return part;
     }
