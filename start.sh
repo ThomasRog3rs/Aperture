@@ -128,10 +128,7 @@ for p in 3000 3001 3002 3003 3004 3005 3006 3007 3008 3009; do
   fi
 done
 
-# ── Phase 5: Start the server ─────────────────────────────────────────────────
-info "Starting Aperture on port $PORT..."
-PORT=$PORT npm start &
-SERVER_PID=$!
+# ── Phase 6: Start the server ─────────────────────────────────────────────────
 
 # ── Wait for server to become ready ──────────────────────────────────────────
 URL="http://localhost:$PORT"

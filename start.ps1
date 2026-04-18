@@ -146,7 +146,7 @@ foreach ($p in 3000..3009) {
     }
 }
 
-# ── Phase 5: Start the server ─────────────────────────────────────────────────
+# ── Phase 6: Start the server ─────────────────────────────────────────────────
 Write-Info "Starting Aperture on port $Port..."
 $env:PORT = $Port
 $ServerProcess = Start-Process -FilePath "npm" -ArgumentList "start" -PassThru -NoNewWindow
