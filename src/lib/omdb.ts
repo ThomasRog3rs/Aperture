@@ -1,3 +1,5 @@
+import { getSetting } from "./storage";
+
 const OMDB_BASE_URL = "http://www.omdbapi.com/";
 
 type OmdbSearchResult = {
@@ -28,7 +30,8 @@ type OmdbDetailsResponse = {
 };
 
 function getOmdbApiKey() {
-  const apiKey = process.env.OMDB_API_KEY?.trim();
+  // DB-stored key takes precedence; env var is the developer fallback.
+  const apiKey = (getSetting("omdbApiKey") ?? process.env.OMDB_API_KEY)?.trim();
   if (!apiKey) {
     throw new Error("OMDb API key missing. Set OMDB_API_KEY.");
   }
