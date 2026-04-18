@@ -17,7 +17,13 @@ import {
   ListVideo,
   Check,
   ChevronDown,
+  Captions,
+  Search,
+  Download,
+  Trash2,
+  AlertCircle,
 } from "lucide-react";
+import type { SubtitleFile, SubtitleSearchResult } from "@/lib/types";
 
 export type VideoPlayerEpisodeTarget = {
   id: string;
@@ -56,6 +62,10 @@ export type VideoPlayerProps = {
   nextEpisode?: VideoPlayerEpisodeTarget;
   episodeSeasons?: VideoPlayerEpisodeListSeason[];
   onSelectEpisode?: (episodeId: string) => void;
+  mediaType?: "movie" | "episode";
+  mediaId?: string;
+  initialSubtitleId?: string | null;
+  initialSubtitlesEnabled?: boolean;
 };
 
 type StreamInfo = {
@@ -121,12 +131,18 @@ export function VideoPlayer({
   nextEpisode,
   episodeSeasons,
   onSelectEpisode,
+  mediaType,
+  mediaId,
+  initialSubtitleId,
+  initialSubtitlesEnabled,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
   const episodeSelectorButtonRef = useRef<HTMLButtonElement>(null);
   const episodeSelectorPanelRef = useRef<HTMLDivElement>(null);
+  const ccButtonRef = useRef<HTMLButtonElement>(null);
+  const ccPanelRef = useRef<HTMLDivElement>(null);
   const lastReportedTime = useRef(0);
   const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didSeekToStart = useRef(false);
@@ -143,6 +159,20 @@ export function VideoPlayer({
   const [isDragging, setIsDragging] = useState(false);
   const [isEpisodeSelectorOpen, setIsEpisodeSelectorOpen] = useState(false);
   const [openEpisodeSeasonId, setOpenEpisodeSeasonId] = useState<string | null>(null);
+
+  // Subtitle state
+  const [subtitles, setSubtitles] = useState<SubtitleFile[]>([]);
+  const [activeSubtitleId, setActiveSubtitleId] = useState<string | null>(null);
+  const [subtitlesEnabled, setSubtitlesEnabled] = useState(false);
+  const [isCcPanelOpen, setIsCcPanelOpen] = useState(false);
+  const [subtitleSearchQuery, setSubtitleSearchQuery] = useState("");
+  const [subtitleSearchLanguage, setSubtitleSearchLanguage] = useState("en");
+  const [subtitleSearchResults, setSubtitleSearchResults] = useState<SubtitleSearchResult[]>([]);
+  const [subtitleSearchLoading, setSubtitleSearchLoading] = useState(false);
+  const [subtitleSearchError, setSubtitleSearchError] = useState<string | null>(null);
+  const [subtitleDownloadingId, setSubtitleDownloadingId] = useState<number | null>(null);
+  const [subtitleDeletingId, setSubtitleDeletingId] = useState<string | null>(null);
+  const [subtitleError, setSubtitleError] = useState<string | null>(null);
 
   // Stream mode: "direct" supports native range-request seeking,
   // "remux"/"transcode" requires URL reload with ?start= for seeking
@@ -198,13 +228,13 @@ export function VideoPlayer({
   const resetHideTimer = useCallback(() => {
     setShowControls(true);
     if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
-    if (isEpisodeSelectorOpen) return;
+    if (isEpisodeSelectorOpen || isCcPanelOpen) return;
     hideControlsTimer.current = setTimeout(() => {
       if (videoRef.current && !videoRef.current.paused) {
         setShowControls(false);
       }
     }, 3000);
-  }, [isEpisodeSelectorOpen]);
+  }, [isEpisodeSelectorOpen, isCcPanelOpen]);
 
   useEffect(() => {
     return () => {
@@ -229,7 +259,121 @@ export function VideoPlayer({
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [isEpisodeSelectorOpen]);
 
-  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!isCcPanelOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (ccPanelRef.current?.contains(target)) return;
+      if (ccButtonRef.current?.contains(target)) return;
+      setIsCcPanelOpen(false);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [isCcPanelOpen]);
+
+  // Load and reconcile subtitle list when mediaId changes
+  useEffect(() => {
+    setSubtitles([]);
+    setActiveSubtitleId(null);
+    setSubtitlesEnabled(false);
+    setIsCcPanelOpen(false);
+    setSubtitleSearchResults([]);
+    setSubtitleSearchError(null);
+    setSubtitleError(null);
+
+    if (!mediaId || !mediaType) return;
+
+    let cancelled = false;
+    const endpoint = mediaType === "movie" ? "movies" : "episodes";
+
+    fetch(`/api/${endpoint}/${mediaId}/subtitles`)
+      .then((r) => r.json())
+      .then((data: { subtitles?: SubtitleFile[] }) => {
+        if (cancelled) return;
+        const list = data.subtitles ?? [];
+        setSubtitles(list);
+
+        if (initialSubtitleId) {
+          const found = list.find((s) => s.id === initialSubtitleId);
+          if (found) {
+            setActiveSubtitleId(initialSubtitleId);
+            setSubtitlesEnabled(initialSubtitlesEnabled ?? false);
+            return;
+          }
+        }
+
+        // Auto-select English subtitle (but keep disabled by default)
+        const englishSub = list.find((s) => s.language === "en");
+        if (englishSub) {
+          setActiveSubtitleId(englishSub.id);
+          setSubtitlesEnabled(false);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mediaId, mediaType, initialSubtitleId, initialSubtitlesEnabled]);
+
+  // Manage <track> element on the video element
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (!activeSubtitleId || !subtitlesEnabled) {
+      // Disable any existing text tracks
+      Array.from(video.textTracks).forEach((t) => {
+        t.mode = "disabled";
+      });
+      return;
+    }
+
+    // Remove any existing track elements we previously added
+    const existingTracks = Array.from(video.querySelectorAll("track[data-aperture-subtitle]"));
+    existingTracks.forEach((t) => t.remove());
+
+    const trackEl = document.createElement("track");
+    trackEl.setAttribute("data-aperture-subtitle", "1");
+    trackEl.kind = "subtitles";
+    trackEl.src = `/api/subtitles/${activeSubtitleId}/track`;
+    trackEl.default = true;
+    video.appendChild(trackEl);
+
+    const enableTrack = () => {
+      if (trackEl.track) trackEl.track.mode = "showing";
+    };
+    trackEl.addEventListener("load", enableTrack);
+    // Also try immediately
+    enableTrack();
+
+    return () => {
+      trackEl.removeEventListener("load", enableTrack);
+      if (video.contains(trackEl)) {
+        video.removeChild(trackEl);
+      }
+      Array.from(video.textTracks).forEach((t) => {
+        t.mode = "disabled";
+      });
+    };
+  }, [activeSubtitleId, subtitlesEnabled]);
+
+  // Persist subtitle preference to server
+  const saveSubtitlePreference = useCallback(
+    (subId: string | null, enabled: boolean) => {
+      if (!mediaId || !mediaType) return;
+      const endpoint = mediaType === "movie" ? "movies" : "episodes";
+      fetch(`/api/${endpoint}/${mediaId}/subtitles/preference`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selectedSubtitleId: subId, enabled }),
+      }).catch(() => {});
+    },
+    [mediaId, mediaType]
+  );
   // We reset per-episode playback state here so switching episodes keeps the
   // fullscreen container mounted while clearing stale timing/loading values.
   useEffect(() => {
@@ -398,6 +542,11 @@ export function VideoPlayer({
           setIsMuted(video.muted);
           break;
         case "Escape":
+          if (isCcPanelOpen) {
+            e.preventDefault();
+            setIsCcPanelOpen(false);
+            break;
+          }
           if (isEpisodeSelectorOpen) {
             e.preventDefault();
             setIsEpisodeSelectorOpen(false);
@@ -411,6 +560,7 @@ export function VideoPlayer({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     isEpisodeSelectorOpen,
+    isCcPanelOpen,
     resetHideTimer,
     effectiveTime,
     effectiveDuration,
@@ -514,6 +664,133 @@ export function VideoPlayer({
 
   const canBrowseEpisodes = Boolean(onSelectEpisode && episodeSeasons?.length);
 
+  // Subtitle action handlers
+  const handleSelectSubtitle = useCallback(
+    (subtitleId: string) => {
+      setActiveSubtitleId(subtitleId);
+      setSubtitlesEnabled(true);
+      saveSubtitlePreference(subtitleId, true);
+    },
+    [saveSubtitlePreference]
+  );
+
+  const handleToggleCc = useCallback(() => {
+    if (!activeSubtitleId) return;
+    const newEnabled = !subtitlesEnabled;
+    setSubtitlesEnabled(newEnabled);
+    saveSubtitlePreference(activeSubtitleId, newEnabled);
+  }, [subtitlesEnabled, activeSubtitleId, saveSubtitlePreference]);
+
+  const handleSubtitleSearch = useCallback(async () => {
+    if (!mediaId || !mediaType) return;
+    setSubtitleSearchLoading(true);
+    setSubtitleSearchError(null);
+    const endpoint = mediaType === "movie" ? "movies" : "episodes";
+    try {
+      const response = await fetch(`/api/${endpoint}/${mediaId}/subtitles/search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: subtitleSearchQuery || undefined,
+          language: subtitleSearchLanguage,
+        }),
+      });
+      const data = (await response.json()) as {
+        results?: SubtitleSearchResult[];
+        error?: string;
+      };
+      if (!response.ok) throw new Error(data.error ?? "Search failed.");
+      setSubtitleSearchResults(data.results ?? []);
+    } catch (error) {
+      setSubtitleSearchError(
+        error instanceof Error ? error.message : "Search failed."
+      );
+    } finally {
+      setSubtitleSearchLoading(false);
+    }
+  }, [mediaId, mediaType, subtitleSearchQuery, subtitleSearchLanguage]);
+
+  const handleDownloadSubtitle = useCallback(
+    async (result: SubtitleSearchResult) => {
+      if (!mediaId || !mediaType) return;
+      setSubtitleDownloadingId(result.fileId);
+      setSubtitleError(null);
+      const endpoint = mediaType === "movie" ? "movies" : "episodes";
+      try {
+        const response = await fetch(
+          `/api/${endpoint}/${mediaId}/subtitles/download`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              file_id: result.fileId,
+              file_name: result.fileName,
+              language: result.language,
+            }),
+          }
+        );
+        const data = (await response.json()) as {
+          subtitle?: SubtitleFile;
+          error?: string;
+        };
+        if (!response.ok) throw new Error(data.error ?? "Download failed.");
+        if (data.subtitle) {
+          setSubtitles((prev) => {
+            const exists = prev.some((s) => s.id === data.subtitle!.id);
+            return exists ? prev : [...prev, data.subtitle!];
+          });
+          handleSelectSubtitle(data.subtitle.id);
+        }
+      } catch (error) {
+        setSubtitleError(
+          error instanceof Error ? error.message : "Download failed."
+        );
+      } finally {
+        setSubtitleDownloadingId(null);
+      }
+    },
+    [mediaId, mediaType, handleSelectSubtitle]
+  );
+
+  const handleDeleteSubtitle = useCallback(
+    async (subtitleId: string) => {
+      if (!mediaId || !mediaType) return;
+      setSubtitleDeletingId(subtitleId);
+      setSubtitleError(null);
+      const endpoint = mediaType === "movie" ? "movies" : "episodes";
+      try {
+        const response = await fetch(
+          `/api/${endpoint}/${mediaId}/subtitles/${subtitleId}`,
+          { method: "DELETE" }
+        );
+        if (!response.ok) {
+          const data = (await response.json()) as { error?: string };
+          throw new Error(data.error ?? "Delete failed.");
+        }
+        setSubtitles((prev) => prev.filter((s) => s.id !== subtitleId));
+        if (activeSubtitleId === subtitleId) {
+          setActiveSubtitleId(null);
+          setSubtitlesEnabled(false);
+          saveSubtitlePreference(null, false);
+        }
+      } catch (error) {
+        setSubtitleError(
+          error instanceof Error ? error.message : "Delete failed."
+        );
+      } finally {
+        setSubtitleDeletingId(null);
+      }
+    },
+    [mediaId, mediaType, activeSubtitleId, saveSubtitlePreference]
+  );
+
+  const toggleCcPanel = useCallback(() => {
+    setShowControls(true);
+    if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
+    setIsCcPanelOpen((prev) => !prev);
+    if (isEpisodeSelectorOpen) setIsEpisodeSelectorOpen(false);
+  }, [isEpisodeSelectorOpen]);
+
   const getDefaultOpenEpisodeSeasonId = useCallback(() => {
     if (!episodeSeasons?.length) return null;
     return (
@@ -531,6 +808,7 @@ export function VideoPlayer({
     if (hideControlsTimer.current) {
       clearTimeout(hideControlsTimer.current);
     }
+    if (isCcPanelOpen) setIsCcPanelOpen(false);
     setIsEpisodeSelectorOpen((prev) => {
       const nextIsOpen = !prev;
       if (nextIsOpen) {
@@ -538,7 +816,7 @@ export function VideoPlayer({
       }
       return nextIsOpen;
     });
-  }, [canBrowseEpisodes, getDefaultOpenEpisodeSeasonId]);
+  }, [canBrowseEpisodes, getDefaultOpenEpisodeSeasonId, isCcPanelOpen]);
 
   const handleSelectEpisode = useCallback(
     (episodeId: string) => {
@@ -559,7 +837,7 @@ export function VideoPlayer({
       className="group fixed inset-0 z-50 w-full overflow-hidden rounded-none border-none bg-black shadow-2xl transition-all select-none"
       onMouseMove={resetHideTimer}
       onMouseLeave={() => {
-        if (!videoRef.current?.paused && !isEpisodeSelectorOpen) setShowControls(false);
+        if (!videoRef.current?.paused && !isEpisodeSelectorOpen && !isCcPanelOpen) setShowControls(false);
       }}
     >
       {/* Video element */}
@@ -635,6 +913,224 @@ export function VideoPlayer({
           </div>
         </button>
       )}
+
+      {/* CC / Subtitle panel */}
+      {isCcPanelOpen && mediaId ? (
+        <div
+          ref={ccPanelRef}
+          className="absolute bottom-20 right-4 z-30 flex w-[min(30rem,calc(100%-2rem))] max-w-full flex-col overflow-hidden rounded-3xl border border-border bg-background/95 shadow-2xl backdrop-blur-xl"
+        >
+          {/* Panel header */}
+          <div className="flex items-start justify-between gap-4 border-b border-border bg-surface/90 px-5 py-4">
+            <div className="min-w-0">
+              <p className="text-[11px] uppercase tracking-[0.24em] text-faint">
+                Subtitles
+              </p>
+              <p className="mt-1 text-lg font-semibold text-foreground">
+                Subtitle settings
+              </p>
+            </div>
+            <button
+              onClick={() => setIsCcPanelOpen(false)}
+              className="rounded-full p-2 text-muted transition-colors hover:bg-surface-strong hover:text-foreground"
+              aria-label="Close subtitle panel"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="max-h-[min(70vh,36rem)] overflow-y-auto bg-background/90">
+            {/* Error display */}
+            {subtitleError ? (
+              <div className="flex items-center gap-2 px-5 py-3 text-sm text-red-400 bg-red-400/10 border-b border-border">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">{subtitleError}</span>
+              </div>
+            ) : null}
+
+            {/* CC toggle */}
+            <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-border/60">
+              <span className="text-sm font-medium text-foreground">
+                Subtitles {subtitlesEnabled ? "On" : "Off"}
+              </span>
+              <button
+                onClick={handleToggleCc}
+                disabled={!activeSubtitleId}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-40 ${
+                  subtitlesEnabled && activeSubtitleId ? "bg-accent" : "bg-white/20"
+                }`}
+                aria-label={subtitlesEnabled ? "Disable subtitles" : "Enable subtitles"}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                    subtitlesEnabled && activeSubtitleId ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Local subtitles */}
+            <div className="border-b border-border/60">
+              <p className="px-5 py-3 text-[11px] uppercase tracking-[0.24em] text-faint bg-surface/60">
+                Available subtitles
+              </p>
+              {subtitles.length === 0 ? (
+                <p className="px-5 py-4 text-sm text-muted">
+                  No subtitle files found.
+                </p>
+              ) : (
+                <div className="divide-y divide-border/40">
+                  {subtitles.map((sub) => (
+                    <div
+                      key={sub.id}
+                      className={`flex items-center gap-3 px-5 py-3 transition-colors ${
+                        activeSubtitleId === sub.id ? "bg-accent/10" : ""
+                      }`}
+                    >
+                      <button
+                        onClick={() => handleSelectSubtitle(sub.id)}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      >
+                        <span
+                          className={`h-2 w-2 flex-shrink-0 rounded-full ${
+                            activeSubtitleId === sub.id && subtitlesEnabled
+                              ? "bg-accent"
+                              : activeSubtitleId === sub.id
+                                ? "bg-white/40"
+                                : "bg-white/10"
+                          }`}
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm text-foreground">
+                            {sub.fileName}
+                          </p>
+                          <p className="text-xs text-muted">
+                            {sub.language.toUpperCase()} · {sub.format.toUpperCase()}
+                            {sub.source === "opensubtitles" ? " · OpenSubtitles" : ""}
+                          </p>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteSubtitle(sub.id)}
+                        disabled={subtitleDeletingId === sub.id}
+                        className="flex-shrink-0 rounded-lg p-1.5 text-muted transition-colors hover:bg-surface-strong hover:text-red-400 disabled:opacity-40"
+                        aria-label="Delete subtitle"
+                      >
+                        {subtitleDeletingId === sub.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Search section */}
+            <div>
+              <p className="px-5 py-3 text-[11px] uppercase tracking-[0.24em] text-faint bg-surface/60">
+                Search OpenSubtitles
+              </p>
+              <div className="px-5 py-4 space-y-3">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={subtitleSearchQuery}
+                    onChange={(e) => setSubtitleSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void handleSubtitleSearch();
+                    }}
+                    placeholder="Search title…"
+                    className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-faint outline-none focus:border-accent/60"
+                  />
+                  <select
+                    value={subtitleSearchLanguage}
+                    onChange={(e) => setSubtitleSearchLanguage(e.target.value)}
+                    className="rounded-lg border border-border bg-surface px-2 py-2 text-sm text-foreground outline-none focus:border-accent/60"
+                  >
+                    <option value="en">EN</option>
+                    <option value="fr">FR</option>
+                    <option value="de">DE</option>
+                    <option value="es">ES</option>
+                    <option value="it">IT</option>
+                    <option value="pt">PT</option>
+                    <option value="ru">RU</option>
+                    <option value="zh">ZH</option>
+                    <option value="ja">JA</option>
+                    <option value="ko">KO</option>
+                    <option value="ar">AR</option>
+                    <option value="nl">NL</option>
+                    <option value="pl">PL</option>
+                    <option value="sv">SV</option>
+                    <option value="tr">TR</option>
+                  </select>
+                  <button
+                    onClick={() => void handleSubtitleSearch()}
+                    disabled={subtitleSearchLoading}
+                    className="flex-shrink-0 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground transition-colors hover:bg-surface-strong disabled:opacity-40"
+                    aria-label="Search"
+                  >
+                    {subtitleSearchLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Search className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+
+                {subtitleSearchError ? (
+                  <p className="text-xs text-red-400">{subtitleSearchError}</p>
+                ) : null}
+
+                {subtitleSearchResults.length > 0 ? (
+                  <div className="divide-y divide-border/40 rounded-lg border border-border overflow-hidden">
+                    {subtitleSearchResults.slice(0, 20).map((result) => (
+                      <div
+                        key={result.fileId}
+                        className="flex items-center gap-3 px-4 py-3 bg-surface/40"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm text-foreground">
+                            {result.fileName}
+                          </p>
+                          <p className="text-xs text-muted">
+                            {result.language.toUpperCase()} · {result.format.toUpperCase()}
+                            {result.downloadCount != null
+                              ? ` · ${result.downloadCount.toLocaleString()} downloads`
+                              : ""}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => void handleDownloadSubtitle(result)}
+                          disabled={subtitleDownloadingId === result.fileId}
+                          className="flex-shrink-0 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-surface-strong disabled:opacity-40 flex items-center gap-1.5"
+                        >
+                          {subtitleDownloadingId === result.fileId ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Download className="h-3.5 w-3.5" />
+                          )}
+                          Get
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : subtitleSearchLoading ? null : subtitleSearchResults.length === 0 &&
+                  subtitleSearchError === null &&
+                  subtitleSearchQuery === "" ? (
+                  <p className="text-xs text-muted">
+                    Search to find subtitles from OpenSubtitles.
+                  </p>
+                ) : subtitleSearchResults.length === 0 ? (
+                  <p className="text-xs text-muted">No results found.</p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isEpisodeSelectorOpen && canBrowseEpisodes ? (
         <div
@@ -888,6 +1384,26 @@ export function VideoPlayer({
           )}
 
           <div className="ml-auto flex items-center gap-2">
+            {mediaId ? (
+              <div className="relative">
+                <button
+                  ref={ccButtonRef}
+                  onClick={toggleCcPanel}
+                  className={`relative rounded-xl border px-3 py-2 text-white/80 transition-colors ${
+                    isCcPanelOpen
+                      ? "border-accent/50 bg-accent/20 text-white"
+                      : "border-white/10 bg-white/5 hover:bg-white/10 hover:text-white"
+                  }`}
+                  aria-label="Subtitle options"
+                  title="Subtitles"
+                >
+                  <Captions className="h-4 w-4" />
+                  {activeSubtitleId && subtitlesEnabled ? (
+                    <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-accent" />
+                  ) : null}
+                </button>
+              </div>
+            ) : null}
             {canBrowseEpisodes ? (
               <div className="group relative">
                 <button

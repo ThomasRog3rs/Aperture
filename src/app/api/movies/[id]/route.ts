@@ -48,6 +48,7 @@ function mapRowToMovie(row: ReturnType<typeof getMovieById>): Movie | null {
     actorsJson,
     xxxRated,
     watched,
+    subtitlesEnabled,
     ...rest
   } = row;
   const omdbGenres = parseGenres(genresJson);
@@ -66,6 +67,7 @@ function mapRowToMovie(row: ReturnType<typeof getMovieById>): Movie | null {
     userGenres,
     xxxRated: Boolean(xxxRated),
     watched: Boolean(watched),
+    subtitlesEnabled: Boolean(subtitlesEnabled),
   };
 }
 

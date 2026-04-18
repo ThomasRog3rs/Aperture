@@ -594,6 +594,10 @@ export default function MovieDetailPage() {
               }).catch(() => {});
             }}
             onExternalPlayer={handlePlayExternal}
+            mediaType="movie"
+            mediaId={movie.id}
+            initialSubtitleId={movie.selectedSubtitleId ?? null}
+            initialSubtitlesEnabled={movie.subtitlesEnabled ?? false}
           />
         ) : null}
 

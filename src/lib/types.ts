@@ -44,6 +44,10 @@ export type Movie = {
   storyboardPath?: string | null;
   /** Playback position in seconds (for resume) */
   watchProgressSeconds?: number;
+  /** Selected subtitle file id (persisted preference) */
+  selectedSubtitleId?: string | null;
+  /** Whether subtitles are enabled for this movie */
+  subtitlesEnabled?: boolean;
 };
 
 export type Season = {
@@ -102,9 +106,35 @@ export type Episode = {
   storyboardPath?: string | null;
   /** Playback position in seconds (for resume) */
   watchProgressSeconds?: number;
+  /** Selected subtitle file id (persisted preference) */
+  selectedSubtitleId?: string | null;
+  /** Whether subtitles are enabled for this episode */
+  subtitlesEnabled?: boolean;
 };
 
 export type SeasonWithEpisodes = Season & { episodes: Episode[] };
+
+export type SubtitleFile = {
+  id: string;
+  mediaType: "movie" | "episode";
+  mediaId: string;
+  filePath: string;
+  fileName: string;
+  language: string;
+  format: string;
+  source: "local" | "opensubtitles";
+  downloadedAt: number | null;
+};
+
+export type SubtitleSearchResult = {
+  fileId: number;
+  fileName: string;
+  language: string;
+  format: string;
+  releaseName: string | null;
+  downloadCount: number | null;
+  rating: number | null;
+};
 
 export type MagnetApiRawResult = {
   name?: string;

@@ -34,6 +34,9 @@ export type MovieRow = Omit<MovieUpsert, "genres" | "userGenres"> & {
   actorsJson: string;
   xxxRated: number;
   watched: number;
+  selectedSubtitleId?: string | null;
+  subtitlesEnabled?: number;
+  watchProgressSeconds?: number;
 };
 
 export type SeasonUpsert = {
@@ -82,6 +85,13 @@ export type EpisodeUpsert = {
 
 export type EpisodeRow = EpisodeUpsert & {
   watched: number;
+  selectedSubtitleId?: string | null;
+  subtitlesEnabled?: number;
+  watchProgressSeconds?: number;
+  transcodeStatus?: string;
+  transcodedPath?: string | null;
+  hlsPath?: string | null;
+  storyboardPath?: string | null;
 };
 
 export type SeriesUpsert = {
@@ -840,6 +850,8 @@ export type MovieUpdate = {
   hlsPath?: string | null;
   storyboardPath?: string | null;
   watchProgressSeconds?: number;
+  selectedSubtitleId?: string | null;
+  subtitlesEnabled?: number;
 };
 
 export function updateMovie(id: string, updates: MovieUpdate) {
@@ -1046,6 +1058,8 @@ export type EpisodeUpdate = {
   hlsPath?: string | null;
   storyboardPath?: string | null;
   watchProgressSeconds?: number;
+  selectedSubtitleId?: string | null;
+  subtitlesEnabled?: number;
 };
 
 export function updateEpisode(id: string, updates: EpisodeUpdate) {
@@ -1236,4 +1250,102 @@ export function purgeDeletedItems(): number {
   db.prepare("DELETE FROM episodes WHERE deletedAt IS NOT NULL").run();
 
   return deletedMovieCount + deletedSeasonIds.length;
+}
+
+// ── Subtitle helpers ─────────────────────────────────────────────────────────
+
+export type SubtitleUpsert = {
+  id: string;
+  mediaType: "movie" | "episode";
+  mediaId: string;
+  filePath: string;
+  fileName: string;
+  language: string;
+  format: string;
+  source: "local" | "opensubtitles";
+  downloadedAt: number | null;
+};
+
+export type SubtitleRow = SubtitleUpsert;
+
+export function upsertSubtitle(sub: SubtitleUpsert): void {
+  const db = getDb();
+  db.prepare(
+    `
+    INSERT INTO subtitles (
+      id, mediaType, mediaId, filePath, fileName, language, format, source, downloadedAt
+    ) VALUES (
+      @id, @mediaType, @mediaId, @filePath, @fileName, @language, @format, @source, @downloadedAt
+    )
+    ON CONFLICT(filePath) DO UPDATE SET
+      fileName = excluded.fileName,
+      language = excluded.language,
+      format = excluded.format,
+      source = CASE WHEN subtitles.source = 'opensubtitles' THEN 'opensubtitles' ELSE excluded.source END,
+      downloadedAt = CASE WHEN excluded.downloadedAt IS NOT NULL THEN excluded.downloadedAt ELSE subtitles.downloadedAt END
+    `
+  ).run(sub);
+}
+
+export function listSubtitlesByMedia(
+  mediaType: string,
+  mediaId: string
+): SubtitleRow[] {
+  const db = getDb();
+  return db
+    .prepare(
+      "SELECT * FROM subtitles WHERE mediaType = ? AND mediaId = ? ORDER BY language ASC, fileName ASC"
+    )
+    .all(mediaType, mediaId) as SubtitleRow[];
+}
+
+export function getSubtitleById(id: string): SubtitleRow | null {
+  const db = getDb();
+  const row = db.prepare("SELECT * FROM subtitles WHERE id = ?").get(id);
+  return (row as SubtitleRow | undefined) ?? null;
+}
+
+export function deleteSubtitleById(id: string): void {
+  const db = getDb();
+  db.prepare("DELETE FROM subtitles WHERE id = ?").run(id);
+}
+
+export function deleteSubtitlesByMediaId(
+  mediaType: string,
+  mediaId: string,
+  filePaths: string[]
+): void {
+  const db = getDb();
+  if (filePaths.length === 0) {
+    db.prepare(
+      "DELETE FROM subtitles WHERE mediaType = ? AND mediaId = ?"
+    ).run(mediaType, mediaId);
+    return;
+  }
+  const placeholders = filePaths.map(() => "?").join(", ");
+  db.prepare(
+    `DELETE FROM subtitles WHERE mediaType = ? AND mediaId = ? AND filePath NOT IN (${placeholders})`
+  ).run(mediaType, mediaId, ...filePaths);
+}
+
+export function updateMovieSubtitlePreference(
+  movieId: string,
+  selectedSubtitleId: string | null,
+  subtitlesEnabled: boolean
+): void {
+  const db = getDb();
+  db.prepare(
+    "UPDATE movies SET selectedSubtitleId = @selectedSubtitleId, subtitlesEnabled = @subtitlesEnabled WHERE id = @id"
+  ).run({ id: movieId, selectedSubtitleId, subtitlesEnabled: subtitlesEnabled ? 1 : 0 });
+}
+
+export function updateEpisodeSubtitlePreference(
+  episodeId: string,
+  selectedSubtitleId: string | null,
+  subtitlesEnabled: boolean
+): void {
+  const db = getDb();
+  db.prepare(
+    "UPDATE episodes SET selectedSubtitleId = @selectedSubtitleId, subtitlesEnabled = @subtitlesEnabled WHERE id = @id"
+  ).run({ id: episodeId, selectedSubtitleId, subtitlesEnabled: subtitlesEnabled ? 1 : 0 });
 }

@@ -1,13 +1,15 @@
 import fs from "node:fs";
 import { NextResponse } from "next/server";
 import { getSetting, setSetting } from "@/lib/storage";
+import { isOpenSubtitlesConfigured } from "@/lib/openSubtitlesApi";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   const libraryRootPath = getSetting("libraryRootPath");
   const playerMode = getSetting("playerMode") ?? "browser";
-  return NextResponse.json({ libraryRootPath, playerMode });
+  const openSubtitlesConfigured = isOpenSubtitlesConfigured();
+  return NextResponse.json({ libraryRootPath, playerMode, openSubtitlesConfigured });
 }
 
 export async function PUT(request: Request) {

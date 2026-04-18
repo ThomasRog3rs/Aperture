@@ -7,8 +7,8 @@ export const runtime = "nodejs";
 function mapRow(
   row: NonNullable<ReturnType<typeof getEpisodeById>>
 ): Episode {
-  const { watched, ...rest } = row;
-  return { ...rest, watched: Boolean(watched) };
+  const { watched, subtitlesEnabled, ...rest } = row;
+  return { ...rest, watched: Boolean(watched), subtitlesEnabled: Boolean(subtitlesEnabled) };
 }
 
 export async function PATCH(
