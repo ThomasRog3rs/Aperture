@@ -18,8 +18,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Aperture — The Tom Collection",
-  description: "Local movie library manager with OMDb metadata.",
+  title: "Aperture",
+  description: "Self-hosted movie library manager.",
+  icons: {
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
+    apple: "/favicon.png",
+  },
 };
 
 export default function RootLayout({
