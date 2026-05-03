@@ -73,6 +73,8 @@ type StreamInfo = {
   duration: number;
 };
 
+type PromiseLikeResult = Promise<void> | void;
+
 function formatTime(seconds: number): string {
   if (!isFinite(seconds) || seconds < 0) return "0:00";
   const h = Math.floor(seconds / 3600);
@@ -81,6 +83,25 @@ function formatTime(seconds: number): string {
   if (h > 0)
     return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function safelyHandlePromise(result: PromiseLikeResult) {
+  if (!result || typeof result.catch !== "function") return;
+  void result.catch(() => {});
+}
+
+function safePlay(video: HTMLVideoElement) {
+  try {
+    safelyHandlePromise(video.play());
+  } catch {}
+}
+
+function supportsElementFullscreen(
+  element: HTMLDivElement | null
+): element is HTMLDivElement & {
+  requestFullscreen: () => Promise<void>;
+} {
+  return Boolean(element && typeof element.requestFullscreen === "function");
 }
 
 type PlayerHoverCardProps = {
@@ -255,8 +276,8 @@ export function VideoPlayer({
       setIsEpisodeSelectorOpen(false);
     };
 
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [isEpisodeSelectorOpen]);
 
   useEffect(() => {
@@ -270,8 +291,8 @@ export function VideoPlayer({
       setIsCcPanelOpen(false);
     };
 
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [isCcPanelOpen]);
 
   // Load and reconcile subtitle list when mediaId changes
@@ -395,13 +416,10 @@ export function VideoPlayer({
     video.pause();
     video.src = hlsUrl || streamUrl;
     video.load();
-    video.play().catch(() => {});
+    safePlay(video);
   }, [streamUrl, hlsUrl]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
   // Seek to startTime once metadata is loaded (for direct play)
   // For transcoded streams, load with ?start= from the start
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !startTime || startTime <= 0 || !streamInfo) return;
@@ -411,7 +429,7 @@ export function VideoPlayer({
         didSeekToStart.current = true;
         setTimeOffset(startTime);
         video.src = getStreamSrc(startTime);
-        video.play().catch(() => {});
+        safePlay(video);
       }
       return;
     }
@@ -429,8 +447,6 @@ export function VideoPlayer({
       return () => video.removeEventListener("loadedmetadata", onLoaded);
     }
   }, [startTime, streamInfo, isDirectPlay, getStreamSrc]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
   // Unified seek function for both direct and transcoded streams
   const seekTo = useCallback(
     (targetTime: number) => {
@@ -465,7 +481,7 @@ export function VideoPlayer({
         setCurrentTime(0);
         setIsLoading(true);
         video.src = getStreamSrc(targetTime);
-        video.play().catch(() => {});
+        safePlay(video);
       }
     },
     [isDirectPlay, timeOffset, getStreamSrc]
@@ -473,9 +489,11 @@ export function VideoPlayer({
 
   const enterFullscreen = useCallback(() => {
     const el = containerRef.current;
-    if (!el) return;
+    if (!supportsElementFullscreen(el)) return;
     if (document.fullscreenElement === el) return;
-    void el.requestFullscreen().catch(() => {});
+    try {
+      safelyHandlePromise(el.requestFullscreen());
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -484,7 +502,7 @@ export function VideoPlayer({
 
   useEffect(() => {
     const el = containerRef.current;
-    if (!el) return;
+    if (!supportsElementFullscreen(el)) return;
 
     const handleFullscreenChange = () => {
       if (document.fullscreenElement !== el) {
@@ -513,7 +531,7 @@ export function VideoPlayer({
         case "k":
           e.preventDefault();
           if (video.paused) {
-            video.play();
+            safePlay(video);
           } else {
             video.pause();
           }
@@ -608,20 +626,30 @@ export function VideoPlayer({
     [effectiveDuration, seekTo]
   );
 
-  const handleProgressMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleProgressPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      e.preventDefault();
       setIsDragging(true);
       seekToPosition(e.clientX);
 
-      const handleMouseMove = (ev: MouseEvent) => seekToPosition(ev.clientX);
-      const handleMouseUp = (ev: MouseEvent) => {
-        seekToPosition(ev.clientX);
+      const handlePointerMove = (ev: PointerEvent) => seekToPosition(ev.clientX);
+      const stopDragging = () => {
         setIsDragging(false);
-        window.removeEventListener("mousemove", handleMouseMove);
-        window.removeEventListener("mouseup", handleMouseUp);
+        window.removeEventListener("pointermove", handlePointerMove);
+        window.removeEventListener("pointerup", handlePointerUp);
+        window.removeEventListener("pointercancel", handlePointerCancel);
       };
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
+      const handlePointerUp = (ev: PointerEvent) => {
+        seekToPosition(ev.clientX);
+        stopDragging();
+      };
+      const handlePointerCancel = () => {
+        stopDragging();
+      };
+      window.addEventListener("pointermove", handlePointerMove);
+      window.addEventListener("pointerup", handlePointerUp);
+      window.addEventListener("pointercancel", handlePointerCancel);
     },
     [seekToPosition]
   );
@@ -643,7 +671,7 @@ export function VideoPlayer({
     const video = videoRef.current;
     if (!video) return;
     if (video.paused) {
-      video.play();
+      safePlay(video);
     } else {
       video.pause();
     }
@@ -836,6 +864,7 @@ export function VideoPlayer({
       ref={containerRef}
       className="group fixed inset-0 z-50 w-full overflow-hidden rounded-none border-none bg-black shadow-2xl transition-all select-none"
       onMouseMove={resetHideTimer}
+      onPointerDown={resetHideTimer}
       onMouseLeave={() => {
         if (!videoRef.current?.paused && !isEpisodeSelectorOpen && !isCcPanelOpen) setShowControls(false);
       }}
@@ -1295,8 +1324,8 @@ export function VideoPlayer({
         {/* Progress bar */}
         <div
           ref={progressRef}
-          className="group/progress relative h-1.5 w-full cursor-pointer rounded-full bg-white/20 mb-3 hover:h-2.5 transition-all"
-          onMouseDown={handleProgressMouseDown}
+          className="group/progress relative mb-3 h-1.5 w-full cursor-pointer touch-none rounded-full bg-white/20 transition-all hover:h-2.5"
+          onPointerDown={handleProgressPointerDown}
         >
           {/* Buffered */}
           <div
