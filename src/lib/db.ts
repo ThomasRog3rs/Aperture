@@ -149,6 +149,20 @@ function ensureSchema(db: DbInstance) {
       ON folder_scan_state (folderType);
     CREATE INDEX IF NOT EXISTS idx_folder_scan_entries_folder
       ON folder_scan_entries (folderPath);
+
+    CREATE TABLE IF NOT EXISTS subtitles (
+      id TEXT PRIMARY KEY,
+      mediaType TEXT NOT NULL,
+      mediaId TEXT NOT NULL,
+      filePath TEXT NOT NULL UNIQUE,
+      fileName TEXT NOT NULL,
+      language TEXT NOT NULL,
+      format TEXT NOT NULL,
+      source TEXT NOT NULL,
+      downloadedAt INTEGER NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_subtitles_media ON subtitles (mediaType, mediaId);
   `);
 
   const columns = db
@@ -238,6 +252,12 @@ function ensureSchema(db: DbInstance) {
   if (!columnNames.has("watchProgressSeconds")) {
     db.exec("ALTER TABLE movies ADD COLUMN watchProgressSeconds INTEGER DEFAULT 0");
   }
+  if (!columnNames.has("selectedSubtitleId")) {
+    db.exec("ALTER TABLE movies ADD COLUMN selectedSubtitleId TEXT NULL");
+  }
+  if (!columnNames.has("subtitlesEnabled")) {
+    db.exec("ALTER TABLE movies ADD COLUMN subtitlesEnabled INTEGER NOT NULL DEFAULT 0");
+  }
 
   if (!episodeColNames.has("transcodeStatus")) {
     db.exec("ALTER TABLE episodes ADD COLUMN transcodeStatus TEXT DEFAULT 'none'");
@@ -253,6 +273,12 @@ function ensureSchema(db: DbInstance) {
   }
   if (!episodeColNames.has("watchProgressSeconds")) {
     db.exec("ALTER TABLE episodes ADD COLUMN watchProgressSeconds INTEGER DEFAULT 0");
+  }
+  if (!episodeColNames.has("selectedSubtitleId")) {
+    db.exec("ALTER TABLE episodes ADD COLUMN selectedSubtitleId TEXT NULL");
+  }
+  if (!episodeColNames.has("subtitlesEnabled")) {
+    db.exec("ALTER TABLE episodes ADD COLUMN subtitlesEnabled INTEGER NOT NULL DEFAULT 0");
   }
 
   const scanStateCols = db

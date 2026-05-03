@@ -7,6 +7,7 @@ import { Modal } from "@/components/Modal";
 
 type SettingsResponse = {
   libraryRootPath: string | null;
+  openSubtitlesConfigured?: boolean;
 };
 
 type IncrementalSyncResponse = {
@@ -98,6 +99,7 @@ export default function SettingsPage() {
   const [purgeConfirm, setPurgeConfirm] = useState<PurgeConfirm | null>(null);
   const [actionInProgress, setActionInProgress] = useState(false);
   const [playerMode, setPlayerMode] = useState<"browser" | "external">("browser");
+  const [openSubtitlesConfigured, setOpenSubtitlesConfigured] = useState(false);
   const [savingPlayer, setSavingPlayer] = useState(false);
   const [notice, setNotice] = useState<{
     tone: "info" | "success" | "error";
@@ -134,6 +136,7 @@ export default function SettingsPage() {
       .then((data: SettingsResponse & { playerMode?: string }) => {
         setLibraryRootPath(data.libraryRootPath ?? "");
         if (data.playerMode === "external") setPlayerMode("external");
+        setOpenSubtitlesConfigured(data.openSubtitlesConfigured ?? false);
       })
       .catch(() => {
         setNotice({ tone: "error", message: "Failed to load settings." });
@@ -843,6 +846,61 @@ export default function SettingsPage() {
             <p className="text-xs text-faint">
               The browser player streams directly in the app with full seek controls. The external
               player opens your OS default media player (VLC, mpv, etc.).
+            </p>
+          </div>
+        </div>
+
+        {/* Subtitles Settings */}
+        <div className="rounded-2xl border border-border bg-surface p-8 shadow-[0_16px_48px_rgba(0,0,0,0.35)]">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-muted text-accent">
+              <span className="text-lg">CC</span>
+            </div>
+            <div>
+              <h2 className="text-lg font-bold tracking-tight">
+                Subtitles
+              </h2>
+              <p className="text-sm text-muted">
+                OpenSubtitles integration for searching and downloading subtitles.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-col gap-4 text-sm">
+            <div className="flex items-center justify-between rounded-lg border border-border bg-background/40 px-4 py-3">
+              <span className="text-muted">OpenSubtitles API key</span>
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                  openSubtitlesConfigured
+                    ? "bg-green-500/15 text-green-400"
+                    : "bg-surface-strong text-faint"
+                }`}
+              >
+                {openSubtitlesConfigured ? "Configured" : "Not configured"}
+              </span>
+            </div>
+            <p className="text-xs text-faint">
+              To enable subtitle search and download, add your OpenSubtitles API key to{" "}
+              <code className="rounded bg-surface-strong px-1.5 py-0.5 font-mono">.env</code>:
+            </p>
+            <pre className="overflow-x-auto rounded-lg border border-border bg-background/60 px-4 py-3 text-xs font-mono text-muted">
+              {`OPENSUBTITLES_API_KEY=your_api_key_here
+# Optional — enables higher download quotas on paid accounts:
+OPENSUBTITLES_USERNAME=your_username
+OPENSUBTITLES_PASSWORD=your_password`}
+            </pre>
+            <p className="text-xs text-faint">
+              Get a free API key at{" "}
+              <a
+                href="https://www.opensubtitles.com/consumers"
+                target="_blank"
+                rel="noreferrer"
+                className="text-accent hover:underline"
+              >
+                opensubtitles.com/consumers
+              </a>
+              . Subtitle files are stored beside the media file on disk. Local subtitle management
+              works without an API key.
             </p>
           </div>
         </div>

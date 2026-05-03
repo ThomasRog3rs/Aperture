@@ -696,6 +696,10 @@ export default function SeriesDetailPage() {
             nextEpisode={nextEpisodeItem?.target}
             episodeSeasons={episodeSelectorSeasons}
             onSelectEpisode={handleSelectEpisode}
+            mediaType="episode"
+            mediaId={activeEpisode.id}
+            initialSubtitleId={activeEpisode.selectedSubtitleId ?? null}
+            initialSubtitlesEnabled={activeEpisode.subtitlesEnabled ?? false}
           />
         ) : null}
 
