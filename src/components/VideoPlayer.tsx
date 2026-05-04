@@ -162,6 +162,7 @@ export function VideoPlayer({
   const progressRef = useRef<HTMLDivElement>(null);
   const episodeSelectorButtonRef = useRef<HTMLButtonElement>(null);
   const episodeSelectorPanelRef = useRef<HTMLDivElement>(null);
+  const currentEpisodeRef = useRef<HTMLButtonElement>(null);
   const ccButtonRef = useRef<HTMLButtonElement>(null);
   const ccPanelRef = useRef<HTMLDivElement>(null);
   const lastReportedTime = useRef(0);
@@ -278,6 +279,14 @@ export function VideoPlayer({
 
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [isEpisodeSelectorOpen]);
+
+  useEffect(() => {
+    if (!isEpisodeSelectorOpen) return;
+    const timer = setTimeout(() => {
+      currentEpisodeRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }, 250);
+    return () => clearTimeout(timer);
   }, [isEpisodeSelectorOpen]);
 
   useEffect(() => {
@@ -1234,6 +1243,7 @@ export function VideoPlayer({
                           {season.episodes.map((episode) => (
                             <button
                               key={episode.id}
+                              ref={episode.isCurrent ? currentEpisodeRef : undefined}
                               onClick={() => handleSelectEpisode(episode.id)}
                               className={`flex w-full items-center gap-4 px-5 py-3 text-left transition-colors ${
                                 episode.isCurrent
