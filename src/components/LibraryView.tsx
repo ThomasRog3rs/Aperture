@@ -10,7 +10,9 @@ import { MainHeader } from "@/components/MainHeader";
 import { Modal } from "@/components/Modal";
 import { MovieGrid } from "@/components/MovieGrid";
 import { StatusBanner } from "@/components/StatusBanner";
+import { FilterIndicator } from "@/components/FilterIndicator";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useNavigationHistory } from "@/hooks/useNavigationHistory";
 import type { MagnetSearchResult, Movie, Series } from "@/lib/types";
 
 type SyncProgress = {
@@ -58,6 +60,9 @@ type MagnetSearchResponse = {
 export function LibraryView() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { setScrollContainer, navigate: navigateWithSave } = useNavigationHistory();
+  const mainContentRef = useRef<HTMLDivElement>(null);
+  
   const initialType =
     (searchParams.get("type") as "all" | "movies" | "series") || "all";
   const initialSort =
@@ -280,8 +285,8 @@ export function LibraryView() {
   }, []);
 
   const handlePlay = useCallback((movie: Movie) => {
-    router.push(`/movies/${movie.id}`);
-  }, [router]);
+    navigateWithSave(`/movies/${movie.id}`);
+  }, [navigateWithSave]);
 
   const handleWatched = useCallback(async (id: string, watchedValue: boolean) => {
     try {
@@ -521,6 +526,25 @@ export function LibraryView() {
     window.location.assign(magnet);
   }, [pendingMagnet]);
 
+  const handleClearAllFilters = useCallback(() => {
+    setQuery("");
+    setGenre("All");
+    setPerson("");
+    setMinRating(null);
+    setWatched("all");
+    setMediaType("all");
+    setSort("rating");
+    // Clear URL parameters
+    router.push("/");
+  }, [router]);
+
+  // Register the scroll container on mount
+  useEffect(() => {
+    if (mainContentRef.current) {
+      setScrollContainer(mainContentRef.current);
+    }
+  }, [setScrollContainer]);
+
   return (
     <div className="min-h-screen">
       <MainHeader
@@ -544,15 +568,31 @@ export function LibraryView() {
         syncing={syncing}
         syncProgress={syncProgress}
         onCancelSync={handleCancelSync}
-        libraryRootPath={libraryRootPath}
       />
 
       <main
+        ref={mainContentRef}
         className={`mx-auto flex w-full flex-col gap-6 ${showRows ? "max-w-none pb-8" : "max-w-6xl px-6 py-8 2xl:max-w-screen-2xl"}`}
       >
         {notice ? (
           <div className={showRows ? "px-6 mt-4" : ""}>
             <StatusBanner tone={notice.tone} message={notice.message} />
+          </div>
+        ) : null}
+
+        {/* Filter Indicator */}
+        {(query !== "" || genre !== "All" || person !== "" || minRating !== null || watched !== "all" || mediaType !== "all" || sort !== "rating") ? (
+          <div className={showRows ? "px-6 mt-4" : ""}>
+            <FilterIndicator
+              query={query}
+              genre={genre}
+              person={person}
+              minRating={minRating}
+              watched={watched}
+              mediaType={mediaType}
+              sort={sort}
+              onClearAll={handleClearAllFilters}
+            />
           </div>
         ) : null}
 

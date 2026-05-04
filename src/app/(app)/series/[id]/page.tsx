@@ -26,6 +26,7 @@ import {
   type VideoPlayerEpisodeListSeason,
   type VideoPlayerEpisodeTarget,
 } from "@/components/VideoPlayer";
+import { useNavigationHistory } from "@/hooks/useNavigationHistory";
 import { formatRating, tmdbImageUrl } from "@/lib/format";
 import type { Episode, SeasonWithEpisodes, Series } from "@/lib/types";
 
@@ -85,6 +86,7 @@ function getEpisodeNavigationTarget(
 export default function SeriesDetailPage() {
   const params = useParams<{ id?: string | string[] }>();
   const router = useRouter();
+  const { goBack } = useNavigationHistory();
   const seriesId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const [series, setSeries] = useState<Series | null>(null);
   const [seasons, setSeasons] = useState<SeasonWithEpisodes[]>([]);
@@ -597,13 +599,13 @@ export default function SeriesDetailPage() {
           )}
 
           <div className="relative z-10 w-full px-6 lg:px-12 max-w-7xl mx-auto flex flex-col gap-4">
-            <Link
-              href="/"
+            <button
+              onClick={goBack}
               className="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors w-fit mb-4"
             >
               <ArrowLeft className="h-4 w-4" />
               Back to library
-            </Link>
+            </button>
             
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white drop-shadow-lg">
               {series.titleClean}

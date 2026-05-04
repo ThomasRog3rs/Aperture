@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -19,11 +19,11 @@ import {
   Edit3,
   CheckCircle2,
   Circle,
-  X,
 } from "lucide-react";
 import { StatusBanner } from "@/components/StatusBanner";
 import { Modal } from "@/components/Modal";
 import { VideoPlayer } from "@/components/VideoPlayer";
+import { useNavigationHistory } from "@/hooks/useNavigationHistory";
 import { formatRating, formatRuntime, tmdbImageUrl } from "@/lib/format";
 import type { Movie } from "@/lib/types";
 
@@ -68,6 +68,7 @@ function dedupeGenres(genres: string[]) {
 export default function MovieDetailPage() {
   const params = useParams<{ id?: string | string[] }>();
   const router = useRouter();
+  const { goBack } = useNavigationHistory();
   const movieId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const [movie, setMovie] = useState<Movie | null>(null);
   const [title, setTitle] = useState("");
@@ -432,7 +433,7 @@ export default function MovieDetailPage() {
       });
       setDeleting(false);
     }
-  }, [movie]);
+  }, [router, movie]);
 
   const posterCandidate = posterInput.trim() || movie?.posterPath || null;
   const posterUrl = movie ? tmdbImageUrl(posterCandidate, "w780") : null;
@@ -462,13 +463,13 @@ export default function MovieDetailPage() {
           )}
 
           <div className="relative z-10 w-full px-6 lg:px-12 max-w-7xl mx-auto flex flex-col gap-4">
-            <Link
-              href="/"
+            <button
+              onClick={goBack}
               className="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors w-fit mb-4"
             >
               <ArrowLeft className="h-4 w-4" />
               Back to library
-            </Link>
+            </button>
             
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white drop-shadow-lg">
               {movie.titleClean}
