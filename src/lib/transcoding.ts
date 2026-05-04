@@ -21,6 +21,7 @@ export type TranscodeJob = {
 
 // In-memory job tracker (survives during server lifetime)
 const jobs = new Map<string, TranscodeJob>();
+const hlsPackagingJobs = new Map<string, Promise<string>>();
 
 // Cached hardware accel result
 let cachedAccel: HardwareAccel | null = null;
@@ -444,9 +445,31 @@ export function getTranscodedPath(mediaId: string): string | null {
   return fs.existsSync(outputPath) ? outputPath : null;
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForHlsReady(hlsDir: string, timeoutMs = 30_000): Promise<void> {
+  const manifestPath = path.join(hlsDir, "master.m3u8");
+  const firstSegmentPath = path.join(hlsDir, "segment_000.ts");
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (fs.existsSync(manifestPath) && fs.existsSync(firstSegmentPath)) {
+      const manifest = fs.readFileSync(manifestPath, "utf8");
+      if (manifest.includes("#EXTINF")) {
+        return;
+      }
+    }
+    await delay(250);
+  }
+
+  throw new Error("Timed out waiting for HLS playlist.");
+}
+
 /**
- * Packages a video file as HLS with multi-bitrate ladder.
- * Creates: master.m3u8, stream_0/ (1080p), stream_1/ (720p), stream_2/ (480p)
+ * Packages a video file as a single-variant HLS stream and resolves once the
+ * first manifest + segment are ready for native HLS playback.
  */
 export async function packageAsHLS(
   mediaId: string,
@@ -458,63 +481,78 @@ export async function packageAsHLS(
   }
 
   const masterPath = path.join(hlsDir, "master.m3u8");
-  if (fs.existsSync(masterPath)) return hlsDir;
+  const firstSegmentPath = path.join(hlsDir, "segment_000.ts");
+  if (fs.existsSync(masterPath) && fs.existsSync(firstSegmentPath)) return hlsDir;
 
-  const accel = await detectHardwareAccel();
+  const existingJob = hlsPackagingJobs.get(mediaId);
+  if (existingJob) {
+    return existingJob;
+  }
 
-  // Build a multi-bitrate HLS ladder
-  const hwAccelInput = accel === "nvenc"
-    ? ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"]
-    : accel === "qsv"
-      ? ["-hwaccel", "qsv"]
-      : [];
+  const job = (async () => {
+    fs.rmSync(hlsDir, { recursive: true, force: true });
+    fs.mkdirSync(hlsDir, { recursive: true });
 
-  const encoder = accel === "nvenc" ? "h264_nvenc"
-    : accel === "qsv" ? "h264_qsv"
-    : accel === "videotoolbox" ? "h264_videotoolbox"
-    : "libx264";
+    const accel = await detectHardwareAccel();
+    const encoderArgs = getEncoderArgs(accel);
+    const preInputArgs: string[] = [];
+    if (accel === "nvenc") {
+      preInputArgs.push("-hwaccel", "cuda", "-hwaccel_output_format", "cuda");
+    }
 
-  const args = [
-    "-y",
-    ...hwAccelInput,
-    "-i", inputPath,
-    // 1080p
-    "-map", "0:v:0", "-map", "0:a:0",
-    "-c:v:0", encoder, "-b:v:0", "5000k", "-maxrate:v:0", "5500k", "-bufsize:v:0", "10000k",
-    "-vf:0", "scale=-2:1080",
-    // 720p
-    "-map", "0:v:0", "-map", "0:a:0",
-    "-c:v:1", encoder, "-b:v:1", "2800k", "-maxrate:v:1", "3000k", "-bufsize:v:1", "6000k",
-    "-vf:1", "scale=-2:720",
-    // 480p
-    "-map", "0:v:0", "-map", "0:a:0",
-    "-c:v:2", encoder, "-b:v:2", "1400k", "-maxrate:v:2", "1500k", "-bufsize:v:2", "3000k",
-    "-vf:2", "scale=-2:480",
-    // Audio for all streams
-    "-c:a", "aac", "-b:a", "192k",
-    // HLS settings
-    "-g", "60", "-keyint_min", "60",
-    "-hls_time", "4",
-    "-hls_playlist_type", "vod",
-    "-hls_segment_filename", path.join(hlsDir, "stream_%v/segment_%03d.ts"),
-    "-master_pl_name", "master.m3u8",
-    "-var_stream_map", "v:0,a:0 v:1,a:1 v:2,a:2",
-    path.join(hlsDir, "stream_%v/index.m3u8"),
-  ];
+    const videoEncoderArgs = accel === "nvenc"
+      ? encoderArgs.slice(4)
+      : encoderArgs;
+    const filterArgs = accel !== "nvenc" ? ["-vf", "format=yuv420p"] : [];
 
-  return new Promise((resolve, reject) => {
-    const proc = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] });
+    const args = [
+      "-y",
+      ...preInputArgs,
+      "-i", inputPath,
+      ...videoEncoderArgs,
+      ...filterArgs,
+      "-c:a", "aac",
+      "-ac", "2",
+      "-b:a", "192k",
+      "-g", "60",
+      "-keyint_min", "60",
+      "-f", "hls",
+      "-hls_time", "4",
+      "-hls_list_size", "0",
+      "-hls_playlist_type", "event",
+      "-hls_flags", "independent_segments+temp_file",
+      "-hls_segment_filename", path.join(hlsDir, "segment_%03d.ts"),
+      masterPath,
+    ];
+
+    const proc = spawn("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
+
     proc.stderr?.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
-    });
-    proc.on("close", (code) => {
-      if (code === 0) {
-        resolve(hlsDir);
-      } else {
-        reject(new Error(`HLS packaging failed: ${stderr.slice(-500)}`));
+      if (stderr.length > 4000) {
+        stderr = stderr.slice(-4000);
       }
     });
-    proc.on("error", reject);
+
+    const exitPromise = new Promise<void>((resolve, reject) => {
+      proc.on("close", (code) => {
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        reject(new Error(`HLS packaging failed: ${stderr.slice(-500)}`));
+      });
+      proc.on("error", reject);
+    });
+    void exitPromise.catch(() => {});
+
+    await Promise.race([waitForHlsReady(hlsDir), exitPromise]);
+    return hlsDir;
+  })().finally(() => {
+    hlsPackagingJobs.delete(mediaId);
   });
+
+  hlsPackagingJobs.set(mediaId, job);
+  return job;
 }

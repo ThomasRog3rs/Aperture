@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
+import { getMovieById } from "@/lib/storage";
+import { validateLibraryPath } from "@/lib/streaming";
+import { packageAsHLS } from "@/lib/transcoding";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -33,6 +36,27 @@ export async function GET(
   }
 
   if (!fs.existsSync(resolved)) {
+    const movie = getMovieById(id);
+    if (!movie?.filePath) {
+      return NextResponse.json({ error: "Movie not found." }, { status: 404 });
+    }
+
+    const result = validateLibraryPath(movie.filePath);
+    if (result instanceof NextResponse) {
+      return result;
+    }
+
+    try {
+      await packageAsHLS(id, result);
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Failed to prepare HLS stream." },
+        { status: 500 }
+      );
+    }
+  }
+
+  if (!fs.existsSync(resolved)) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
 
@@ -43,11 +67,13 @@ export async function GET(
 
   return new Response(fileBuffer, {
     status: 200,
-    headers: {
-      "Content-Type": contentType,
-      "Content-Length": String(stat.size),
-      "Cache-Control": ext === ".m3u8" ? "no-cache" : "public, max-age=3600",
-      "Access-Control-Allow-Origin": "*",
-    },
-  });
+      headers: {
+        "Content-Type": contentType,
+        "Content-Length": String(stat.size),
+        "Cache-Control": ext === ".m3u8" ? "no-cache" : "public, max-age=3600",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers": "Range, Content-Type",
+      },
+    });
 }

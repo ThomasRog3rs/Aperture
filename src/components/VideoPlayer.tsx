@@ -96,6 +96,15 @@ function safePlay(video: HTMLVideoElement) {
   } catch {}
 }
 
+function supportsNativeHlsPlayback() {
+  if (typeof document === "undefined") return false;
+  const video = document.createElement("video");
+  return (
+    video.canPlayType("application/vnd.apple.mpegurl") !== "" ||
+    video.canPlayType("application/x-mpegURL") !== ""
+  );
+}
+
 function supportsElementFullscreen(
   element: HTMLDivElement | null
 ): element is HTMLDivElement & {
@@ -196,13 +205,23 @@ export function VideoPlayer({
   const [subtitleDeletingId, setSubtitleDeletingId] = useState<string | null>(null);
   const [subtitleError, setSubtitleError] = useState<string | null>(null);
 
-  // Stream mode: "direct" supports native range-request seeking,
-  // "remux"/"transcode" requires URL reload with ?start= for seeking
+  // Stream mode describes the server-side transport. Some browsers can play the
+  // transcoded fallback through native HLS, which is seekable like direct play.
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
+  const [supportsNativeHls, setSupportsNativeHls] = useState<boolean | null>(null);
   // Time offset when we restart a transcoded stream at a non-zero position
   const [timeOffset, setTimeOffset] = useState(0);
 
-  const isDirectPlay = !streamInfo || streamInfo.mode === "direct";
+  const shouldUseHls = Boolean(
+    hlsUrl && supportsNativeHls && streamInfo?.mode === "transcode"
+  );
+  const isSeekablePlayback = !streamInfo || streamInfo.mode === "direct" || shouldUseHls;
+  const playbackBaseUrl = shouldUseHls && hlsUrl ? hlsUrl : streamUrl;
+  const isPlaybackStrategyReady = streamInfo !== null && supportsNativeHls !== null;
+
+  useEffect(() => {
+    setSupportsNativeHls(supportsNativeHlsPlayback());
+  }, []);
 
   // Fetch stream info on mount to determine playback mode
   useEffect(() => {
@@ -224,15 +243,15 @@ export function VideoPlayer({
     };
   }, [streamUrl]);
 
-  // Build the effective video src (with ?start= for transcoded streams)
+  // Build the effective video src (with ?start= only for the live fragmented MP4 path)
   const getStreamSrc = useCallback(
     (seekTime?: number) => {
-      const base = hlsUrl || streamUrl;
-      if (isDirectPlay || !seekTime || seekTime <= 0) return base;
+      const base = playbackBaseUrl;
+      if (shouldUseHls || isSeekablePlayback || !seekTime || seekTime <= 0) return base;
       const sep = base.includes("?") ? "&" : "?";
       return `${base}${sep}start=${Math.floor(seekTime)}`;
     },
-    [hlsUrl, streamUrl, isDirectPlay]
+    [playbackBaseUrl, shouldUseHls, isSeekablePlayback]
   );
 
   // Effective time for display = video.currentTime + timeOffset
@@ -423,21 +442,28 @@ export function VideoPlayer({
 
     if (!video) return;
     video.pause();
-    video.src = hlsUrl || streamUrl;
+    if (!isPlaybackStrategyReady) {
+      video.removeAttribute("src");
+      video.load();
+      return;
+    }
+    video.src = playbackBaseUrl;
     video.load();
     safePlay(video);
-  }, [streamUrl, hlsUrl]);
-  // Seek to startTime once metadata is loaded (for direct play)
-  // For transcoded streams, load with ?start= from the start
+  }, [playbackBaseUrl, isPlaybackStrategyReady]);
+  // Seek to startTime once metadata is loaded for direct play/native HLS.
+  // The live fragmented MP4 fallback still requires ?start= reloads.
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !startTime || startTime <= 0 || !streamInfo) return;
+    if (!video || !startTime || startTime <= 0 || !streamInfo || !isPlaybackStrategyReady)
+      return;
 
-    if (!isDirectPlay) {
+    if (!isSeekablePlayback) {
       if (!didSeekToStart.current) {
         didSeekToStart.current = true;
         setTimeOffset(startTime);
         video.src = getStreamSrc(startTime);
+        video.load();
         safePlay(video);
       }
       return;
@@ -455,14 +481,14 @@ export function VideoPlayer({
       video.addEventListener("loadedmetadata", onLoaded);
       return () => video.removeEventListener("loadedmetadata", onLoaded);
     }
-  }, [startTime, streamInfo, isDirectPlay, getStreamSrc]);
-  // Unified seek function for both direct and transcoded streams
+  }, [startTime, streamInfo, isSeekablePlayback, getStreamSrc, isPlaybackStrategyReady]);
+  // Unified seek function for both seekable playback and the live MP4 fallback
   const seekTo = useCallback(
     (targetTime: number) => {
       const video = videoRef.current;
       if (!video) return;
 
-      if (isDirectPlay) {
+      if (isSeekablePlayback) {
         video.currentTime = targetTime;
         setCurrentTime(targetTime);
         return;
@@ -490,10 +516,11 @@ export function VideoPlayer({
         setCurrentTime(0);
         setIsLoading(true);
         video.src = getStreamSrc(targetTime);
+        video.load();
         safePlay(video);
       }
     },
-    [isDirectPlay, timeOffset, getStreamSrc]
+    [isSeekablePlayback, timeOffset, getStreamSrc]
   );
 
   const enterFullscreen = useCallback(() => {
@@ -610,14 +637,14 @@ export function VideoPlayer({
     const video = videoRef.current;
     if (!video || video.buffered.length === 0) return;
     const end = video.buffered.end(video.buffered.length - 1);
-    if (isDirectPlay) {
+    if (isSeekablePlayback) {
       setBuffered(video.duration > 0 ? end / video.duration : 0);
     } else {
       setBuffered(
         effectiveDuration > 0 ? (end + timeOffset) / effectiveDuration : 0
       );
     }
-  }, [isDirectPlay, effectiveDuration, timeOffset]);
+  }, [isSeekablePlayback, effectiveDuration, timeOffset]);
 
   // Scrub bar: click / drag to seek
   const seekToPosition = useCallback(
@@ -882,7 +909,6 @@ export function VideoPlayer({
       <video
         ref={videoRef}
         className="h-full w-full cursor-pointer bg-black object-contain"
-        src={getStreamSrc()}
         poster={posterUrl}
         playsInline
         autoPlay
@@ -912,7 +938,7 @@ export function VideoPlayer({
         onDurationChange={() => {
           const d = videoRef.current?.duration;
           if (d && isFinite(d) && d > 0) {
-            if (isDirectPlay) setDuration(d);
+            if (isSeekablePlayback) setDuration(d);
           }
         }}
         onProgress={handleProgress}
@@ -934,7 +960,7 @@ export function VideoPlayer({
       />
 
       {/* Loading spinner */}
-      {isLoading && (isPlaying || isSeeking) && (
+      {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <Loader2 className="h-12 w-12 animate-spin text-white/80" />
         </div>
@@ -1416,7 +1442,7 @@ export function VideoPlayer({
 
           <div className="flex-1" />
 
-          {!isDirectPlay && (
+          {streamInfo?.mode && streamInfo.mode !== "direct" && (
             <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1">
               {streamInfo?.mode === "remux" ? "remux" : "transcode"}
             </span>
