@@ -177,6 +177,7 @@ export function VideoPlayer({
   const lastReportedTime = useRef(0);
   const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didSeekToStart = useRef(false);
+  const lastFallbackRestartAt = useRef(0);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -213,9 +214,9 @@ export function VideoPlayer({
   const [timeOffset, setTimeOffset] = useState(0);
 
   const shouldUseHls = Boolean(
-    hlsUrl && supportsNativeHls && streamInfo?.mode === "transcode"
+    hlsUrl && supportsNativeHls && streamInfo && streamInfo.mode !== "direct"
   );
-  const isSeekablePlayback = !streamInfo || streamInfo.mode === "direct" || shouldUseHls;
+  const isSeekablePlayback = streamInfo?.mode === "direct" || shouldUseHls;
   const playbackBaseUrl = shouldUseHls && hlsUrl ? hlsUrl : streamUrl;
   const isPlaybackStrategyReady = streamInfo !== null && supportsNativeHls !== null;
 
@@ -434,6 +435,7 @@ export function VideoPlayer({
     setDuration(0);
     setBuffered(0);
     setTimeOffset(0);
+    lastFallbackRestartAt.current = 0;
     setShowControls(true);
     setIsLoading(true);
     setIsSeeking(false);
@@ -486,7 +488,7 @@ export function VideoPlayer({
   const seekTo = useCallback(
     (targetTime: number) => {
       const video = videoRef.current;
-      if (!video) return;
+      if (!video || !isPlaybackStrategyReady) return;
 
       if (isSeekablePlayback) {
         video.currentTime = targetTime;
@@ -511,6 +513,11 @@ export function VideoPlayer({
         video.currentTime = adjustedTarget;
         setCurrentTime(adjustedTarget);
       } else {
+        const now = Date.now();
+        // Guard against rapid scrub restarts while ffmpeg spins up a new stream.
+        if (now - lastFallbackRestartAt.current < 1000) return;
+        lastFallbackRestartAt.current = now;
+
         // Reload with new start position
         setTimeOffset(targetTime);
         setCurrentTime(0);
@@ -520,7 +527,7 @@ export function VideoPlayer({
         safePlay(video);
       }
     },
-    [isSeekablePlayback, timeOffset, getStreamSrc]
+    [isPlaybackStrategyReady, isSeekablePlayback, timeOffset, getStreamSrc]
   );
 
   const enterFullscreen = useCallback(() => {
