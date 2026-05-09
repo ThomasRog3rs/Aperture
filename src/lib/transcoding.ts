@@ -2,10 +2,13 @@ import { execFile, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
+import {
+  getHlsDir,
+  getTranscodeDir,
+  getTranscodedFilePath,
+} from "@/lib/transcodePaths";
 
 const execFileAsync = promisify(execFile);
-
-const TRANSCODES_DIR = path.join(process.cwd(), "data", "transcodes");
 
 export type HardwareAccel = "nvenc" | "qsv" | "videotoolbox" | "software";
 
@@ -369,7 +372,7 @@ export async function createLiveStream(
  * Ensures the output directory exists for a given media item.
  */
 export function ensureTranscodeDir(mediaId: string): string {
-  const dir = path.join(TRANSCODES_DIR, mediaId);
+  const dir = getTranscodeDir(mediaId);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -497,7 +500,8 @@ export async function transcodeToH264(
 export function getTranscodeJob(jobId: string): Omit<TranscodeJob, "process"> | null {
   const job = jobs.get(jobId);
   if (!job) return null;
-  const { process: _proc, ...rest } = job;
+  const rest = { ...job };
+  delete rest.process;
   return rest;
 }
 
@@ -505,7 +509,7 @@ export function getTranscodeJob(jobId: string): Omit<TranscodeJob, "process"> | 
  * Returns the path to a transcoded file if it exists.
  */
 export function getTranscodedPath(mediaId: string): string | null {
-  const outputPath = path.join(TRANSCODES_DIR, mediaId, "output.mp4");
+  const outputPath = getTranscodedFilePath(mediaId);
   return fs.existsSync(outputPath) ? outputPath : null;
 }
 
@@ -539,7 +543,8 @@ export async function packageAsHLS(
   mediaId: string,
   inputPath: string
 ): Promise<string> {
-  const hlsDir = path.join(ensureTranscodeDir(mediaId), "hls");
+  ensureTranscodeDir(mediaId);
+  const hlsDir = getHlsDir(mediaId);
   if (!fs.existsSync(hlsDir)) {
     fs.mkdirSync(hlsDir, { recursive: true });
   }
