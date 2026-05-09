@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -19,7 +19,6 @@ import {
   Edit3,
   CheckCircle2,
   Circle,
-  X,
 } from "lucide-react";
 import { StatusBanner } from "@/components/StatusBanner";
 import { Modal } from "@/components/Modal";
@@ -432,7 +431,7 @@ export default function MovieDetailPage() {
       });
       setDeleting(false);
     }
-  }, [movie]);
+  }, [movie, router]);
 
   const posterCandidate = posterInput.trim() || movie?.posterPath || null;
   const posterUrl = movie ? tmdbImageUrl(posterCandidate, "w780") : null;
