@@ -12,6 +12,7 @@ import {
   Monitor,
   Play,
   Save,
+  Shuffle,
   Video,
   Check,
   Trash2,
@@ -49,6 +50,33 @@ type FolderImagesResponse = {
   images: FolderImage[];
   error?: string;
 };
+
+type PlaybackLaunchMode = "continue" | "random";
+
+type RandomSessionSummary = {
+  seriesId: string;
+  startedEpisodeIds: string[];
+  currentEpisodeId: string | null;
+  startedEpisodeCount: number;
+  createdAt: number;
+  updatedAt: number;
+  totalEpisodeCount: number;
+  remainingEpisodeCount: number;
+  unwatchedRemainingEpisodeCount: number;
+  watchedRemainingEpisodeCount: number;
+  exhausted: boolean;
+};
+
+type RandomSessionResponse = {
+  session: RandomSessionSummary | null;
+  episode?: Episode | null;
+  exhausted?: boolean;
+  error?: string;
+};
+
+type RandomSessionActionPayload =
+  | { action: "start_new" | "continue" | "next_random" }
+  | { action: "mark_started"; episodeId: string };
 
 function getEpisodeDisplayTitle(episode: Episode): string {
   return episode.titleClean || episode.titleRaw;
@@ -97,10 +125,18 @@ export default function SeriesDetailPage() {
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState<string | null>(null);
   const [activeEpisodeId, setActiveEpisodeId] = useState<string | null>(null);
+  const [playbackMode, setPlaybackMode] = useState<PlaybackLaunchMode>("continue");
   const [playerStartTime, setPlayerStartTime] = useState(0);
   const [togglingWatched, setTogglingWatched] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [randomSession, setRandomSession] = useState<RandomSessionSummary | null>(
+    null
+  );
+  const [randomSessionLoading, setRandomSessionLoading] = useState(false);
+  const [randomAction, setRandomAction] = useState<
+    "start_new" | "continue" | "next_random" | "mark_started" | null
+  >(null);
   const [notice, setNotice] = useState<{
     tone: "info" | "success" | "error";
     message: string;
@@ -109,6 +145,48 @@ export default function SeriesDetailPage() {
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
+
+  const loadRandomSession = useCallback(async (id: string) => {
+    setRandomSessionLoading(true);
+    try {
+      const response = await fetch(`/api/series/${id}/random-session`);
+      const data = (await response.json()) as RandomSessionResponse;
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to load random session.");
+      }
+      setRandomSession(data.session ?? null);
+    } catch (error) {
+      setRandomSession(null);
+      setNotice({
+        tone: "error",
+        message:
+          error instanceof Error ? error.message : "Failed to load random session.",
+      });
+    } finally {
+      setRandomSessionLoading(false);
+    }
+  }, []);
+
+  const requestRandomSessionAction = useCallback(
+    async (payload: RandomSessionActionPayload) => {
+      if (!seriesId) {
+        throw new Error("Missing series id in URL.");
+      }
+
+      const response = await fetch(`/api/series/${seriesId}/random-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = (await response.json()) as RandomSessionResponse;
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update random session.");
+      }
+      setRandomSession(data.session ?? null);
+      return data;
+    },
+    [seriesId]
+  );
 
   const loadFolderImages = useCallback(
     async (id: string, currentPoster: string | null) => {
@@ -145,6 +223,7 @@ export default function SeriesDetailPage() {
       setNotice({ tone: "error", message: "Missing series id in URL." });
       setSeries(null);
       setSeasons([]);
+      setRandomSession(null);
       setLoading(false);
       return;
     }
@@ -160,7 +239,8 @@ export default function SeriesDetailPage() {
       setSeasons(data.seasons ?? data.series.seasons ?? []);
       setTitle(data.series.titleClean);
       setPosterInput(data.series.posterPath ?? "");
-      loadFolderImages(data.series.id, data.series.posterPath ?? null);
+      void loadFolderImages(data.series.id, data.series.posterPath ?? null);
+      void loadRandomSession(data.series.id);
     } catch (error) {
       setNotice({
         tone: "error",
@@ -169,10 +249,11 @@ export default function SeriesDetailPage() {
       });
       setSeries(null);
       setSeasons([]);
+      setRandomSession(null);
     } finally {
       setLoading(false);
     }
-  }, [loadFolderImages, seriesId]);
+  }, [loadFolderImages, loadRandomSession, seriesId]);
 
   useEffect(() => {
     fetchSeries();
@@ -249,6 +330,7 @@ export default function SeriesDetailPage() {
     ) {
       setPlayerStartTime(0);
       setActiveEpisodeId(null);
+      setPlaybackMode("continue");
     }
   }, [activeEpisodeId, orderedEpisodes]);
 
@@ -269,39 +351,78 @@ export default function SeriesDetailPage() {
     []
   );
 
-  const playEpisode = useCallback((episode: Episode) => {
-    if (!episode.filePath) {
-      setNotice({ tone: "error", message: "File path missing for this episode." });
-      return;
-    }
-    setPlayerStartTime(episode.watchProgressSeconds ?? 0);
-    setActiveEpisodeId(episode.id);
-    setNotice(null);
-  }, []);
+  const playEpisode = useCallback(
+    (
+      episode: Episode,
+      options?: { mode?: PlaybackLaunchMode; startTime?: number }
+    ) => {
+      if (!episode.filePath) {
+        setNotice({ tone: "error", message: "File path missing for this episode." });
+        return;
+      }
+      setPlaybackMode(options?.mode ?? "continue");
+      setPlayerStartTime(
+        options?.startTime ?? (episode.watched ? 0 : episode.watchProgressSeconds ?? 0)
+      );
+      setActiveEpisodeId(episode.id);
+      setNotice(null);
+    },
+    []
+  );
+
+  const startEpisodePlayback = useCallback(
+    async (episode: Episode, mode: PlaybackLaunchMode) => {
+      if (mode === "random") {
+        setRandomAction("mark_started");
+        try {
+          await requestRandomSessionAction({
+            action: "mark_started",
+            episodeId: episode.id,
+          });
+        } catch (error) {
+          setNotice({
+            tone: "error",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Failed to update random session.",
+          });
+          return;
+        } finally {
+          setRandomAction((current) =>
+            current === "mark_started" ? null : current
+          );
+        }
+      }
+      playEpisode(episode, { mode });
+    },
+    [playEpisode, requestRandomSessionAction]
+  );
 
   const handlePlay = useCallback(
     (episode: Episode) => {
-      playEpisode(episode);
+      void startEpisodePlayback(episode, "continue");
     },
-    [playEpisode]
+    [startEpisodePlayback]
   );
 
   const handleClosePlayer = useCallback(() => {
     setPlayerStartTime(0);
     setActiveEpisodeId(null);
+    setPlaybackMode("continue");
   }, []);
 
   const handlePlayPreviousEpisode = useCallback(() => {
     if (previousEpisodeItem) {
-      playEpisode(previousEpisodeItem.episode);
+      void startEpisodePlayback(previousEpisodeItem.episode, playbackMode);
     }
-  }, [playEpisode, previousEpisodeItem]);
+  }, [playbackMode, previousEpisodeItem, startEpisodePlayback]);
 
   const handlePlayNextEpisode = useCallback(() => {
     if (nextEpisodeItem) {
-      playEpisode(nextEpisodeItem.episode);
+      void startEpisodePlayback(nextEpisodeItem.episode, playbackMode);
     }
-  }, [nextEpisodeItem, playEpisode]);
+  }, [nextEpisodeItem, playbackMode, startEpisodePlayback]);
 
   const handleSelectEpisode = useCallback(
     (episodeId: string) => {
@@ -309,10 +430,53 @@ export default function SeriesDetailPage() {
         ({ episode }) => episode.id === episodeId
       )?.episode;
       if (selectedEpisode) {
-        playEpisode(selectedEpisode);
+        void startEpisodePlayback(selectedEpisode, playbackMode);
       }
     },
-    [orderedEpisodes, playEpisode]
+    [orderedEpisodes, playbackMode, startEpisodePlayback]
+  );
+
+  const handleRandomSessionAction = useCallback(
+    async (action: "start_new" | "continue" | "next_random") => {
+      setRandomAction(action);
+      setNotice(null);
+      try {
+        const data = await requestRandomSessionAction({ action });
+        if (data.exhausted || !data.episode) {
+          setNotice({
+            tone: "info",
+            message:
+              action === "start_new"
+                ? "This series has no remaining episodes for a random session."
+                : "This random session is complete. Start a new one to keep going.",
+          });
+          if (action === "next_random") {
+            handleClosePlayer();
+          }
+          return;
+        }
+
+        playEpisode(data.episode, { mode: "random" });
+      } catch (error) {
+        setNotice({
+          tone: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Failed to update random session.",
+        });
+      } finally {
+        setRandomAction((current) => (current === action ? null : current));
+      }
+    },
+    [handleClosePlayer, playEpisode, requestRandomSessionAction]
+  );
+
+  const handlePlayRandom = useCallback(
+    (action: "start_new" | "continue") => {
+      void handleRandomSessionAction(action);
+    },
+    [handleRandomSessionAction]
   );
 
   const handlePlayExternal = useCallback(async (episode: Episode) => {
@@ -407,11 +571,21 @@ export default function SeriesDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ currentTime: completedTime, duration: completedTime }),
       }).catch(() => {});
+      if (playbackMode === "random") {
+        void handleRandomSessionAction("next_random");
+        return;
+      }
       if (nextEpisodeItem) {
-        playEpisode(nextEpisodeItem.episode);
+        void startEpisodePlayback(nextEpisodeItem.episode, "continue");
       }
     },
-    [nextEpisodeItem, playEpisode, updateEpisodeInState]
+    [
+      handleRandomSessionAction,
+      nextEpisodeItem,
+      playbackMode,
+      startEpisodePlayback,
+      updateEpisodeInState,
+    ]
   );
 
   const handleSave = useCallback(async () => {
@@ -535,6 +709,12 @@ export default function SeriesDetailPage() {
     [orderedEpisodes]
   );
 
+  const handlePlayContinue = useCallback(() => {
+    if (continueEpisode) {
+      void startEpisodePlayback(continueEpisode, "continue");
+    }
+  }, [continueEpisode, startEpisodePlayback]);
+
   const seasonSummary = useMemo(() => {
     if (!series) return "";
     return `${series.seasonCount} ${series.seasonCount === 1 ? "season" : "seasons"}`;
@@ -632,13 +812,57 @@ export default function SeriesDetailPage() {
             <div className="flex flex-wrap items-center gap-3 mt-4">
               {continueEpisode && (
                 <button
-                  onClick={() => playEpisode(continueEpisode)}
+                  onClick={handlePlayContinue}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-white text-black font-semibold hover:bg-white/90 transition-colors shadow-lg"
                 >
                   <Play className="h-4 w-4 fill-current" />
                   {allWatched ? "Watch Again" : "Continue"}
                 </button>
               )}
+
+              {orderedEpisodes.length > 0 ? (
+                randomSessionLoading && !randomSession ? (
+                  <button
+                    disabled
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-surface-strong/80 backdrop-blur-sm text-white font-semibold border border-white/10 opacity-60"
+                  >
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Random
+                  </button>
+                ) : randomSession ? (
+                  <>
+                    <button
+                      onClick={() => handlePlayRandom("continue")}
+                      disabled={randomAction !== null}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-accent text-background font-semibold hover:bg-accent-hover transition-colors shadow-lg disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Shuffle className="h-4 w-4" />
+                      {randomAction === "continue"
+                        ? "Continuing..."
+                        : "Continue Random"}
+                    </button>
+                    <button
+                      onClick={() => handlePlayRandom("start_new")}
+                      disabled={randomAction !== null}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-surface-strong/80 backdrop-blur-sm text-white font-semibold hover:bg-surface-strong transition-colors border border-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Shuffle className="h-4 w-4" />
+                      {randomAction === "start_new"
+                        ? "Starting..."
+                        : "Start New Random"}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => handlePlayRandom("start_new")}
+                    disabled={randomAction !== null}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-accent text-background font-semibold hover:bg-accent-hover transition-colors shadow-lg disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Shuffle className="h-4 w-4" />
+                    {randomAction === "start_new" ? "Starting..." : "Random"}
+                  </button>
+                )
+              ) : null}
 
               <div className="flex-1" />
               
@@ -701,6 +925,12 @@ export default function SeriesDetailPage() {
             mediaId={activeEpisode.id}
             initialSubtitleId={activeEpisode.selectedSubtitleId ?? null}
             initialSubtitlesEnabled={activeEpisode.subtitlesEnabled ?? false}
+            isRandomMode={playbackMode === "random"}
+            onRandomEpisode={
+              playbackMode === "random" && randomAction === null
+                ? () => void handleRandomSessionAction("next_random")
+                : undefined
+            }
           />
         ) : null}
 

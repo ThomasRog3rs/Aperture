@@ -100,6 +100,14 @@ function ensureSchema(db: DbInstance) {
       lastSyncedAt INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS series_random_sessions (
+      seriesId TEXT PRIMARY KEY,
+      startedEpisodeIdsJson TEXT NOT NULL DEFAULT '[]',
+      currentEpisodeId TEXT NULL,
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS episodes (
       id TEXT PRIMARY KEY,
       seasonId TEXT NOT NULL,
@@ -223,6 +231,33 @@ function ensureSchema(db: DbInstance) {
   }
   if (!seriesColNames.has("actorsJson")) {
     db.exec("ALTER TABLE series ADD COLUMN actorsJson TEXT NOT NULL DEFAULT '[]'");
+  }
+
+  const seriesRandomSessionCols = db
+    .prepare("PRAGMA table_info(series_random_sessions)")
+    .all() as Array<{ name: string }>;
+  const seriesRandomSessionColNames = new Set(
+    seriesRandomSessionCols.map((column) => column.name)
+  );
+  if (!seriesRandomSessionColNames.has("startedEpisodeIdsJson")) {
+    db.exec(
+      "ALTER TABLE series_random_sessions ADD COLUMN startedEpisodeIdsJson TEXT NOT NULL DEFAULT '[]'"
+    );
+  }
+  if (!seriesRandomSessionColNames.has("currentEpisodeId")) {
+    db.exec(
+      "ALTER TABLE series_random_sessions ADD COLUMN currentEpisodeId TEXT NULL"
+    );
+  }
+  if (!seriesRandomSessionColNames.has("createdAt")) {
+    db.exec(
+      "ALTER TABLE series_random_sessions ADD COLUMN createdAt INTEGER NOT NULL DEFAULT 0"
+    );
+  }
+  if (!seriesRandomSessionColNames.has("updatedAt")) {
+    db.exec(
+      "ALTER TABLE series_random_sessions ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0"
+    );
   }
 
   const episodeCols = db

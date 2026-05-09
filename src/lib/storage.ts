@@ -120,6 +120,22 @@ export type SeriesRow = Omit<SeriesUpsert, "genres" | "userGenres"> & {
   actorsJson: string;
 };
 
+export type SeriesRandomSessionRow = {
+  seriesId: string;
+  startedEpisodeIdsJson: string;
+  currentEpisodeId: string | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type SeriesRandomSession = {
+  seriesId: string;
+  startedEpisodeIds: string[];
+  currentEpisodeId: string | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type FolderScanType = "movie" | "series" | "season";
 
 export type FolderScanStateUpsert = {
@@ -940,6 +956,152 @@ export function updateSeries(id: string, updates: SeriesUpdate) {
   db.prepare(`UPDATE series SET ${setClauses} WHERE id = @id`).run(params);
 }
 
+function parseSeriesRandomSessionIds(value: string): string[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    for (const entry of parsed) {
+      if (typeof entry !== "string" || !entry.trim()) continue;
+      if (seen.has(entry)) continue;
+      seen.add(entry);
+      ids.push(entry);
+    }
+    return ids;
+  } catch {
+    return [];
+  }
+}
+
+function mapSeriesRandomSessionRow(
+  row: SeriesRandomSessionRow
+): SeriesRandomSession {
+  const startedEpisodeIds = parseSeriesRandomSessionIds(row.startedEpisodeIdsJson);
+  return {
+    seriesId: row.seriesId,
+    startedEpisodeIds,
+    currentEpisodeId:
+      row.currentEpisodeId && row.currentEpisodeId.trim()
+        ? row.currentEpisodeId
+        : startedEpisodeIds[startedEpisodeIds.length - 1] ?? null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+export function getSeriesRandomSession(
+  seriesId: string
+): SeriesRandomSession | null {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT * FROM series_random_sessions WHERE seriesId = ?")
+    .get(seriesId) as SeriesRandomSessionRow | undefined;
+  return row ? mapSeriesRandomSessionRow(row) : null;
+}
+
+export function replaceSeriesRandomSession(
+  seriesId: string,
+  startedEpisodeIds: string[] = [],
+  currentEpisodeId: string | null = null
+): SeriesRandomSession {
+  const db = getDb();
+  const now = Date.now();
+  db.prepare(
+    `
+    INSERT INTO series_random_sessions (
+      seriesId,
+      startedEpisodeIdsJson,
+      currentEpisodeId,
+      createdAt,
+      updatedAt
+    ) VALUES (
+      @seriesId,
+      @startedEpisodeIdsJson,
+      @currentEpisodeId,
+      @createdAt,
+      @updatedAt
+    )
+    ON CONFLICT(seriesId) DO UPDATE SET
+      startedEpisodeIdsJson = excluded.startedEpisodeIdsJson,
+      currentEpisodeId = excluded.currentEpisodeId,
+      createdAt = excluded.createdAt,
+      updatedAt = excluded.updatedAt
+    `
+  ).run({
+    seriesId,
+    startedEpisodeIdsJson: JSON.stringify(startedEpisodeIds),
+    currentEpisodeId,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return {
+    seriesId,
+    startedEpisodeIds: [...startedEpisodeIds],
+    currentEpisodeId,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export function deleteSeriesRandomSession(seriesId: string) {
+  const db = getDb();
+  db.prepare("DELETE FROM series_random_sessions WHERE seriesId = ?").run(seriesId);
+}
+
+export function markSeriesRandomSessionEpisodeStarted(
+  seriesId: string,
+  episodeId: string
+): SeriesRandomSession {
+  const db = getDb();
+  const transaction = db.transaction(() => {
+    const current = getSeriesRandomSession(seriesId);
+    const startedEpisodeIds = current ? [...current.startedEpisodeIds] : [];
+    if (!startedEpisodeIds.includes(episodeId)) {
+      startedEpisodeIds.push(episodeId);
+    }
+    const createdAt = current?.createdAt ?? Date.now();
+    const updatedAt = Date.now();
+    db.prepare(
+      `
+      INSERT INTO series_random_sessions (
+        seriesId,
+        startedEpisodeIdsJson,
+        currentEpisodeId,
+        createdAt,
+        updatedAt
+      ) VALUES (
+        @seriesId,
+        @startedEpisodeIdsJson,
+        @currentEpisodeId,
+        @createdAt,
+        @updatedAt
+      )
+      ON CONFLICT(seriesId) DO UPDATE SET
+        startedEpisodeIdsJson = excluded.startedEpisodeIdsJson,
+        currentEpisodeId = excluded.currentEpisodeId,
+        createdAt = excluded.createdAt,
+        updatedAt = excluded.updatedAt
+      `
+    ).run({
+      seriesId,
+      startedEpisodeIdsJson: JSON.stringify(startedEpisodeIds),
+      currentEpisodeId: episodeId,
+      createdAt,
+      updatedAt,
+    });
+    return {
+      seriesId,
+      startedEpisodeIds,
+      currentEpisodeId: episodeId,
+      createdAt,
+      updatedAt,
+    };
+  });
+
+  return transaction();
+}
+
 export function updatePersonalRating(id: string, personalRating: number | null) {
   const db = getDb();
   db.prepare(
@@ -992,6 +1154,7 @@ export function deleteSeries(id: string) {
   }
   db.prepare("DELETE FROM seasons WHERE seriesFolderPath = ?").run(seriesFolderPath);
   db.prepare("DELETE FROM series WHERE id = ?").run(id);
+  db.prepare("DELETE FROM series_random_sessions WHERE seriesId = ?").run(id);
 }
 
 export function deleteSeasonById(id: string) {

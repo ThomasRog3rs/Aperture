@@ -8,6 +8,7 @@ import {
   Play,
   RotateCcw,
   RotateCw,
+  Shuffle,
   SkipBack,
   SkipForward,
   Volume2,
@@ -47,6 +48,7 @@ type VideoPlayerBottomControlsProps = {
   isOverflowMenuOpen: boolean;
   hasActiveSubtitleIndicator: boolean;
   canBrowseEpisodes: boolean;
+  isRandomMode: boolean;
   previousEpisode?: VideoPlayerEpisodeTarget;
   nextEpisode?: VideoPlayerEpisodeTarget;
   onProgressPointerDown: PointerEventHandler<HTMLDivElement>;
@@ -60,6 +62,7 @@ type VideoPlayerBottomControlsProps = {
   onToggleOverflowMenu: () => void;
   onPreviousEpisode?: () => void;
   onNextEpisode?: () => void;
+  onRandomEpisode?: () => void;
   onClose: () => void;
 };
 
@@ -122,6 +125,7 @@ export function VideoPlayerBottomControls({
   isOverflowMenuOpen,
   hasActiveSubtitleIndicator,
   canBrowseEpisodes,
+  isRandomMode,
   previousEpisode,
   nextEpisode,
   onProgressPointerDown,
@@ -135,6 +139,7 @@ export function VideoPlayerBottomControls({
   onToggleOverflowMenu,
   onPreviousEpisode,
   onNextEpisode,
+  onRandomEpisode,
   onClose,
 }: VideoPlayerBottomControlsProps) {
   const playbackModeBadge = getPlaybackModeBadge(streamInfo?.mode);
@@ -231,10 +236,31 @@ export function VideoPlayerBottomControls({
               onPlaybackStrategyChange={onPlaybackStrategyChange}
             />
 
-            <div className="ml-auto flex items-center gap-2">
-              {mediaId ? (
-                <div className="relative">
-                  <button
+              <div className="ml-auto flex items-center gap-2">
+                {isRandomMode ? (
+                  <div className="group relative">
+                    <button
+                      onClick={onRandomEpisode}
+                      disabled={!onRandomEpisode}
+                      className="peer rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label="Play another random episode"
+                    >
+                      <Shuffle className="h-4 w-4" />
+                    </button>
+                    <PlayerHoverCard
+                      label="Random episode"
+                      target={{
+                        id: "random-episode",
+                        title: "Play another random episode",
+                        subtitle: "Pick a different episode from this random session.",
+                      }}
+                    />
+                  </div>
+                ) : null}
+
+                {mediaId ? (
+                  <div className="relative">
+                    <button
                     ref={ccButtonRef}
                     onClick={onToggleCcPanel}
                     className={`relative rounded-xl border px-3 py-2 text-white/80 transition-colors ${
@@ -385,6 +411,17 @@ export function VideoPlayerBottomControls({
                   >
                     <ListVideo className="h-4 w-4 flex-shrink-0" />
                     <span>Episodes</span>
+                  </button>
+                ) : null}
+
+                {isRandomMode ? (
+                  <button
+                    onClick={onRandomEpisode}
+                    disabled={!onRandomEpisode}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-sm text-white/80 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Shuffle className="h-4 w-4 flex-shrink-0" />
+                    <span>Random Episode</span>
                   </button>
                 ) : null}
 
