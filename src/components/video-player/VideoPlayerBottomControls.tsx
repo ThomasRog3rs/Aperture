@@ -310,15 +310,6 @@ export function VideoPlayerBottomControls({
                   <PlayerHoverCard label="Next episode" target={nextEpisode} />
                 </div>
               </div>
-
-              <button
-                onClick={onClose}
-                className="rounded-xl border border-white/10 bg-white/5 p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-                title="Exit player"
-                aria-label="Exit player"
-              >
-                <X className="h-4 w-4" />
-              </button>
             </div>
           </>
         ) : null}
