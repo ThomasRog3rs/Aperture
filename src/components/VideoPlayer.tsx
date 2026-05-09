@@ -23,6 +23,7 @@ import {
   Trash2,
   AlertCircle,
   MoreHorizontal,
+  PictureInPicture2,
 } from "lucide-react";
 import type { SubtitleFile, SubtitleSearchResult } from "@/lib/types";
 
@@ -153,6 +154,25 @@ function supportsElementFullscreen(
   return Boolean(element && typeof element.requestFullscreen === "function");
 }
 
+// Extend HTMLVideoElement to include webkit PiP API present in Safari/iOS
+interface WebkitVideoElement extends HTMLVideoElement {
+  webkitSupportsPresentationMode?: (mode: string) => boolean;
+  webkitSetPresentationMode?: (mode: string) => void;
+  webkitPresentationMode?: string;
+}
+
+function supportsPictureInPicture(video: HTMLVideoElement | null): boolean {
+  if (!video) return false;
+  const wv = video as WebkitVideoElement;
+  // Standard W3C API
+  if (typeof document !== "undefined" && "pictureInPictureEnabled" in document) {
+    return document.pictureInPictureEnabled && !video.disablePictureInPicture;
+  }
+  // Safari/iOS webkit fallback
+  return typeof wv.webkitSupportsPresentationMode === "function" &&
+    wv.webkitSupportsPresentationMode("picture-in-picture");
+}
+
 type PlayerHoverCardProps = {
   label: string;
   target?: VideoPlayerEpisodeTarget;
@@ -258,6 +278,10 @@ export function VideoPlayer({
   const [playbackNotice, setPlaybackNotice] = useState<string | null>(null);
   // Time offset when we restart a transcoded stream at a non-zero position
   const [timeOffset, setTimeOffset] = useState(0);
+
+  // Picture-in-Picture state
+  const [isPiP, setIsPiP] = useState(false);
+  const [isPipSupported, setIsPipSupported] = useState(false);
 
   const requestedHls = streamInfo?.effectiveMode === "hls";
   const shouldUseHls = Boolean(
@@ -690,7 +714,114 @@ export function VideoPlayer({
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, [onClose]);
 
-  // Keyboard shortcuts
+  // Picture-in-Picture: detect support and sync state with browser PiP events
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    setIsPipSupported(supportsPictureInPicture(video));
+
+    const onEnterPiP = () => setIsPiP(true);
+    const onLeavePiP = () => setIsPiP(false);
+
+    video.addEventListener("enterpictureinpicture", onEnterPiP);
+    video.addEventListener("leavepictureinpicture", onLeavePiP);
+    // Safari/iOS webkit equivalents
+    video.addEventListener("webkitpresentationmodechanged", () => {
+      const wv = video as WebkitVideoElement;
+      setIsPiP(wv.webkitPresentationMode === "picture-in-picture");
+    });
+
+    return () => {
+      video.removeEventListener("enterpictureinpicture", onEnterPiP);
+      video.removeEventListener("leavepictureinpicture", onLeavePiP);
+    };
+  }, []);
+
+  const handleTogglePiP = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const wv = video as WebkitVideoElement;
+
+    try {
+      if (isPiP) {
+        // Exit PiP
+        if (typeof document.exitPictureInPicture === "function") {
+          await document.exitPictureInPicture();
+        } else if (typeof wv.webkitSetPresentationMode === "function") {
+          wv.webkitSetPresentationMode("inline");
+        }
+      } else {
+        // Enter PiP
+        if (typeof video.requestPictureInPicture === "function") {
+          await video.requestPictureInPicture();
+        } else if (typeof wv.webkitSetPresentationMode === "function") {
+          wv.webkitSetPresentationMode("picture-in-picture");
+        }
+      }
+    } catch {
+      // PiP may be blocked (e.g. no user gesture, policy restriction) — ignore
+    }
+  }, [isPiP]);
+
+  // Media Session API — powers lock screen controls and AirPlay/PiP UI on iOS
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title,
+      artist: "Aperture",
+      artwork: posterUrl
+        ? [{ src: posterUrl, sizes: "any", type: "image/jpeg" }]
+        : [],
+    });
+
+    const seekOffset = 10;
+    navigator.mediaSession.setActionHandler("play", () => {
+      const video = videoRef.current;
+      if (video) safePlay(video);
+    });
+    navigator.mediaSession.setActionHandler("pause", () => {
+      const video = videoRef.current;
+      if (video) video.pause();
+    });
+    navigator.mediaSession.setActionHandler("seekbackward", (details) => {
+      seekTo(Math.max(0, effectiveTime - (details.seekOffset ?? seekOffset)));
+    });
+    navigator.mediaSession.setActionHandler("seekforward", (details) => {
+      seekTo(Math.min(effectiveDuration || Infinity, effectiveTime + (details.seekOffset ?? seekOffset)));
+    });
+    navigator.mediaSession.setActionHandler("previoustrack", onPreviousEpisode ?? null);
+    navigator.mediaSession.setActionHandler("nexttrack", onNextEpisode ?? null);
+
+    return () => {
+      // Clean up action handlers when the player unmounts
+      (["play", "pause", "seekbackward", "seekforward", "previoustrack", "nexttrack"] as MediaSessionAction[]).forEach(
+        (action) => {
+          try { navigator.mediaSession.setActionHandler(action, null); } catch {}
+        }
+      );
+    };
+  }, [title, posterUrl, effectiveTime, effectiveDuration, seekTo, onPreviousEpisode, onNextEpisode]);
+
+  // Keep Media Session playback state in sync
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+  }, [isPlaying]);
+
+  // Update Media Session position state for lock screen scrubber
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    if (!effectiveDuration || effectiveDuration <= 0) return;
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: effectiveDuration,
+        playbackRate: videoRef.current?.playbackRate ?? 1,
+        position: Math.min(effectiveTime, effectiveDuration),
+      });
+    } catch {}
+  }, [effectiveTime, effectiveDuration]);
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const video = videoRef.current;
@@ -1498,6 +1629,20 @@ export function VideoPlayer({
               title="Open in external player"
             >
               <Monitor className="h-4 w-4" />
+            </button>
+          )}
+          {isPipSupported && (
+            <button
+              onClick={handleTogglePiP}
+              className={`rounded-lg p-1.5 transition-colors ${
+                isPiP
+                  ? "text-accent hover:bg-white/10"
+                  : "text-white/70 hover:bg-white/10 hover:text-white"
+              }`}
+              title={isPiP ? "Exit picture-in-picture" : "Picture-in-picture"}
+              aria-label={isPiP ? "Exit picture-in-picture" : "Picture-in-picture"}
+            >
+              <PictureInPicture2 className="h-4 w-4" />
             </button>
           )}
           <button

@@ -20,6 +20,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Aperture",
   description: "Self-hosted movie library manager.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: "Aperture",
+    statusBarStyle: "black-translucent",
+  },
   icons: {
     icon: "/favicon.png",
     shortcut: "/favicon.png",
