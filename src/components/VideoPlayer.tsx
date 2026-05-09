@@ -312,8 +312,10 @@ export function VideoPlayer({
   const [supportsNativeHls, setSupportsNativeHls] = useState<boolean | null>(null);
   const [clientDevice, setClientDevice] = useState<ClientDevice>("desktop");
   const [isStandaloneWebApp, setIsStandaloneWebApp] = useState(false);
+  const [hasDetectedEnvironment, setHasDetectedEnvironment] = useState(false);
   const [playbackStrategy, setPlaybackStrategy] = useState<PlaybackStrategy>("auto");
   const [playbackNotice, setPlaybackNotice] = useState<string | null>(null);
+  const [playerNotice, setPlayerNotice] = useState<string | null>(null);
   // Time offset when we restart a transcoded stream at a non-zero position
   const [timeOffset, setTimeOffset] = useState(0);
 
@@ -328,12 +330,14 @@ export function VideoPlayer({
   const isSeekablePlayback = streamInfo?.mode === "direct" || shouldUseHls;
   const playbackBaseUrl = shouldUseHls && hlsUrl ? hlsUrl : streamUrl;
   const isPlaybackStrategyReady = streamInfo !== null && supportsNativeHls !== null;
-  const shouldAutoEnterFullscreen = !(clientDevice === "mobile" && isStandaloneWebApp);
+  const shouldAutoEnterFullscreen =
+    hasDetectedEnvironment && !(clientDevice === "mobile" && isStandaloneWebApp);
 
   useEffect(() => {
     setSupportsNativeHls(supportsNativeHlsPlayback());
     setClientDevice(detectClientDevice());
     setIsStandaloneWebApp(detectStandaloneWebApp());
+    setHasDetectedEnvironment(true);
     try {
       setPlaybackStrategy(parseStoredStrategy(localStorage.getItem(PLAYBACK_STRATEGY_STORAGE_KEY)));
     } catch {
@@ -763,11 +767,18 @@ export function VideoPlayer({
 
     setIsPipSupported(supportsPictureInPicture(video));
 
-    const onEnterPiP = () => setIsPiP(true);
+    const onEnterPiP = () => {
+      setIsPiP(true);
+      setPlayerNotice(null);
+    };
     const onLeavePiP = () => setIsPiP(false);
     const onPresentationModeChange = () => {
       const wv = video as WebkitVideoElement;
-      setIsPiP(wv.webkitPresentationMode === "picture-in-picture");
+      const isInPiP = wv.webkitPresentationMode === "picture-in-picture";
+      setIsPiP(isInPiP);
+      if (isInPiP) {
+        setPlayerNotice(null);
+      }
     };
 
     video.addEventListener("enterpictureinpicture", onEnterPiP);
@@ -789,6 +800,7 @@ export function VideoPlayer({
     const video = videoRef.current;
     if (!video) return;
     const wv = video as WebkitVideoElement;
+    setPlayerNotice(null);
 
     try {
       if (isPiP) {
@@ -809,6 +821,7 @@ export function VideoPlayer({
     } catch (error) {
       const name = error instanceof DOMException ? error.name : "UnknownError";
       const message = error instanceof Error ? error.message : "Unknown failure";
+      const notice = formatPictureInPictureError(error, isStandaloneWebApp);
 
       console.warn("Aperture PiP request failed", {
         name,
@@ -820,7 +833,12 @@ export function VideoPlayer({
         paused: video.paused,
       });
 
-      onError?.(formatPictureInPictureError(error, isStandaloneWebApp));
+      if (name === "NotSupportedError") {
+        setIsPipSupported(false);
+      }
+
+      setPlayerNotice(notice);
+      onError?.(notice);
     }
   }, [isPiP, isStandaloneWebApp, onError]);
 
@@ -1310,9 +1328,18 @@ export function VideoPlayer({
         </div>
       )}
 
-      {playbackNotice ? (
-        <div className="absolute left-1/2 top-4 z-30 w-[min(30rem,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-amber-300/35 bg-black/75 px-4 py-2 text-center text-xs text-amber-100 backdrop-blur">
-          {playbackNotice}
+      {playbackNotice || playerNotice ? (
+        <div className="absolute left-1/2 top-4 z-30 flex w-[min(30rem,calc(100%-2rem))] -translate-x-1/2 flex-col gap-2">
+          {playbackNotice ? (
+            <div className="rounded-xl border border-amber-300/35 bg-black/75 px-4 py-2 text-center text-xs text-amber-100 backdrop-blur">
+              {playbackNotice}
+            </div>
+          ) : null}
+          {playerNotice ? (
+            <div className="rounded-xl border border-red-300/35 bg-black/80 px-4 py-2 text-center text-xs text-red-100 backdrop-blur">
+              {playerNotice}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
