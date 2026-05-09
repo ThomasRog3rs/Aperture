@@ -34,18 +34,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <head>
-        {/* viewport-fit=cover extends the webview to physical screen edges (under notch/Dynamic Island) on iOS */}
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=1, viewport-fit=cover"
-        />
-        {/* Apple PWA meta tags — when added to Home Screen the app behaves like native */}
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        {/* Android chrome toolbar colour */}
-        <meta name="theme-color" content="#000000" />
-      </head>
       <body
         className={`${bodySans.variable} ${displaySerif.variable} ${geistMono.variable} min-h-screen bg-background text-foreground antialiased`}
       >
