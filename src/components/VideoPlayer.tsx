@@ -22,6 +22,7 @@ import {
   Download,
   Trash2,
   AlertCircle,
+  Smartphone,
 } from "lucide-react";
 import type { SubtitleFile, SubtitleSearchResult } from "@/lib/types";
 
@@ -217,7 +218,6 @@ export function VideoPlayer({
   const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didSeekToStart = useRef(false);
   const lastFallbackRestartAt = useRef(0);
-  const pausedForPortraitRef = useRef(false);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -231,6 +231,8 @@ export function VideoPlayer({
   const [isDragging, setIsDragging] = useState(false);
   const [isEpisodeSelectorOpen, setIsEpisodeSelectorOpen] = useState(false);
   const [openEpisodeSeasonId, setOpenEpisodeSeasonId] = useState<string | null>(null);
+  const [isPortrait, setIsPortrait] = useState(false);
+  const [portraitDismissed, setPortraitDismissed] = useState(false);
 
   // Subtitle state
   const [subtitles, setSubtitles] = useState<SubtitleFile[]>([]);
@@ -251,7 +253,6 @@ export function VideoPlayer({
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
   const [supportsNativeHls, setSupportsNativeHls] = useState<boolean | null>(null);
   const [clientDevice, setClientDevice] = useState<ClientDevice>("desktop");
-  const [isPortraitOrientation, setIsPortraitOrientation] = useState(false);
   const [playbackStrategy, setPlaybackStrategy] = useState<PlaybackStrategy>("auto");
   const [playbackNotice, setPlaybackNotice] = useState<string | null>(null);
   // Time offset when we restart a transcoded stream at a non-zero position
@@ -274,28 +275,6 @@ export function VideoPlayer({
       setPlaybackStrategy("auto");
     }
   }, []);
-
-  useEffect(() => {
-    if (clientDevice !== "mobile") {
-      setIsPortraitOrientation(false);
-      return;
-    }
-
-    const updateOrientation = () => {
-      if (typeof window === "undefined") return;
-      const portraitByMedia = window.matchMedia?.("(orientation: portrait)").matches;
-      const portraitBySize = window.innerHeight > window.innerWidth;
-      setIsPortraitOrientation(portraitByMedia || portraitBySize);
-    };
-
-    updateOrientation();
-    window.addEventListener("resize", updateOrientation);
-    window.addEventListener("orientationchange", updateOrientation);
-    return () => {
-      window.removeEventListener("resize", updateOrientation);
-      window.removeEventListener("orientationchange", updateOrientation);
-    };
-  }, [clientDevice]);
 
   // Fetch stream info on mount to determine playback mode
   useEffect(() => {
@@ -645,6 +624,8 @@ export function VideoPlayer({
 
   const enterFullscreen = useCallback(() => {
     const el = containerRef.current;
+    // requestFullscreen on a <div> is not supported on iOS Safari — skip silently.
+    // The player uses viewport-fit=cover + fixed inset-0 for edge-to-edge display instead.
     if (!supportsElementFullscreen(el)) return;
     if (document.fullscreenElement === el) return;
     try {
@@ -655,6 +636,27 @@ export function VideoPlayer({
   useEffect(() => {
     enterFullscreen();
   }, [enterFullscreen]);
+
+  // Prevent iOS Safari rubber-band scroll while the player is open
+  useEffect(() => {
+    document.body.classList.add("no-overscroll");
+    return () => document.body.classList.remove("no-overscroll");
+  }, []);
+
+  // Detect portrait orientation on mobile. screen.orientation.lock() is not
+  // supported on iOS Safari, so we show a prompt instead.
+  useEffect(() => {
+    if (clientDevice !== "mobile") return;
+    const mq = window.matchMedia("(orientation: portrait)");
+    setIsPortrait(mq.matches);
+    const handler = (e: MediaQueryListEvent) => {
+      setIsPortrait(e.matches);
+      // Re-show the prompt if user rotates back to portrait
+      if (!e.matches) setPortraitDismissed(false);
+    };
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, [clientDevice]);
 
   useEffect(() => {
     if (clientDevice !== "mobile") return;
@@ -679,25 +681,6 @@ export function VideoPlayer({
       } catch {}
     };
   }, [clientDevice]);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || clientDevice !== "mobile") return;
-
-    if (isPortraitOrientation) {
-      if (!video.paused) {
-        pausedForPortraitRef.current = true;
-        video.pause();
-      }
-      setShowControls(true);
-      return;
-    }
-
-    if (pausedForPortraitRef.current) {
-      pausedForPortraitRef.current = false;
-      safePlay(video);
-    }
-  }, [clientDevice, isPortraitOrientation]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -1136,15 +1119,6 @@ export function VideoPlayer({
         }}
       />
 
-      {clientDevice === "mobile" && isPortraitOrientation ? (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/90 px-6 text-center">
-          <div className="max-w-sm space-y-2">
-            <p className="text-xs uppercase tracking-[0.24em] text-white/70">Landscape required</p>
-            <p className="text-lg font-semibold text-white">Rotate your device to landscape to continue playback.</p>
-          </div>
-        </div>
-      ) : null}
-
       {/* Loading spinner */}
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -1516,9 +1490,15 @@ export function VideoPlayer({
 
       {/* Top bar */}
       <div
-        className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between bg-gradient-to-b from-black/80 via-black/40 to-transparent px-4 py-3 transition-opacity duration-300 ${
+        className={`absolute top-0 left-0 right-0 z-20 flex items-center justify-between bg-gradient-to-b from-black/80 via-black/40 to-transparent transition-opacity duration-300 ${
           showControls ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
+        style={{
+          paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.75rem)",
+          paddingBottom: "0.75rem",
+          paddingLeft: "calc(env(safe-area-inset-left, 0px) + 1rem)",
+          paddingRight: "calc(env(safe-area-inset-right, 0px) + 1rem)",
+        }}
       >
         <span className="text-sm font-medium text-white truncate mr-4">
           {title}
@@ -1545,9 +1525,14 @@ export function VideoPlayer({
 
       {/* Bottom controls */}
       <div
-        className={`absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-4 pb-3 pt-10 transition-opacity duration-300 ${
+        className={`absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/90 via-black/50 to-transparent pt-10 transition-opacity duration-300 ${
           showControls ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
+        style={{
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
+          paddingLeft: "calc(env(safe-area-inset-left, 0px) + 1rem)",
+          paddingRight: "calc(env(safe-area-inset-right, 0px) + 1rem)",
+        }}
       >
         {/* Progress bar */}
         <div
@@ -1740,6 +1725,26 @@ export function VideoPlayer({
           </div>
         </div>
       </div>
+
+      {/* Portrait-mode rotation prompt for mobile.
+          screen.orientation.lock() is unsupported on iOS Safari, so we prompt instead. */}
+      {clientDevice === "mobile" && isPortrait && !portraitDismissed && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4 px-8 text-center">
+            <div className="relative">
+              <Smartphone className="h-14 w-14 rotate-90 text-white/80" />
+            </div>
+            <p className="text-lg font-semibold text-white">Rotate to landscape</p>
+            <p className="text-sm text-white/60">For the best viewing experience, turn your device sideways.</p>
+            <button
+              onClick={() => setPortraitDismissed(true)}
+              className="mt-2 rounded-full border border-white/20 bg-white/10 px-6 py-2.5 text-sm text-white transition-colors hover:bg-white/20 active:bg-white/25"
+            >
+              Continue in portrait
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
