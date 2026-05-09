@@ -41,6 +41,8 @@ export type VideoPlayerProps = {
   mediaId?: string;
   initialSubtitleId?: string | null;
   initialSubtitlesEnabled?: boolean;
+  isRandomMode?: boolean;
+  onRandomEpisode?: () => void;
 };
 
 export type StreamInfo = {

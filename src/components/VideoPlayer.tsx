@@ -66,6 +66,8 @@ export function VideoPlayer({
   mediaId,
   initialSubtitleId,
   initialSubtitlesEnabled,
+  isRandomMode = false,
+  onRandomEpisode,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -928,6 +930,7 @@ export function VideoPlayer({
         isOverflowMenuOpen={uiState.isOverflowMenuOpen}
         hasActiveSubtitleIndicator={hasActiveSubtitleIndicator}
         canBrowseEpisodes={canBrowseEpisodes}
+        isRandomMode={isRandomMode}
         previousEpisode={previousEpisode}
         nextEpisode={nextEpisode}
         onProgressPointerDown={handleProgressPointerDown}
@@ -941,6 +944,7 @@ export function VideoPlayer({
         onToggleOverflowMenu={toggleOverflowMenu}
         onPreviousEpisode={onPreviousEpisode}
         onNextEpisode={onNextEpisode}
+        onRandomEpisode={onRandomEpisode}
         onClose={onClose}
       />
     </div>
