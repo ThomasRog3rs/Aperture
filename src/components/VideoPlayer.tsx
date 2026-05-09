@@ -22,6 +22,8 @@ import {
   Download,
   Trash2,
   AlertCircle,
+  MoreHorizontal,
+  PictureInPicture2,
 } from "lucide-react";
 import type { SubtitleFile, SubtitleSearchResult } from "@/lib/types";
 
@@ -70,8 +72,47 @@ export type VideoPlayerProps = {
 
 type StreamInfo = {
   mode: "direct" | "remux" | "transcode";
+  requestedStrategy?: "auto" | "classic" | "hls";
+  effectiveStrategy?: "auto" | "classic" | "hls";
+  effectiveMode?: "direct" | "hls" | "live";
+  fallbackReason?: string;
   duration: number;
 };
+
+type PlaybackStrategy = "auto" | "classic" | "hls";
+type ClientDevice = "desktop" | "mobile";
+type OrientationLock = "any" | "natural" | "landscape" | "portrait";
+type MaybeScreenOrientation = {
+  lock?: (orientation: OrientationLock) => Promise<void>;
+  unlock?: () => void;
+};
+
+const PLAYBACK_STRATEGY_STORAGE_KEY = "aperture.playback.strategy.v1";
+
+function detectClientDevice(): ClientDevice {
+  if (typeof navigator === "undefined") return "desktop";
+  const ua = navigator.userAgent.toLowerCase();
+  if (
+    ua.includes("iphone") ||
+    ua.includes("ipad") ||
+    ua.includes("android") ||
+    ua.includes("mobile")
+  ) {
+    return "mobile";
+  }
+  return "desktop";
+}
+
+function parseStoredStrategy(value: string | null): PlaybackStrategy {
+  if (value === "classic" || value === "hls") return value;
+  return "auto";
+}
+
+function playbackModeLabel(mode: PlaybackStrategy) {
+  if (mode === "classic") return "Classic";
+  if (mode === "hls") return "HLS";
+  return "Auto";
+}
 
 type PromiseLikeResult = Promise<void> | void;
 
@@ -96,12 +137,77 @@ function safePlay(video: HTMLVideoElement) {
   } catch {}
 }
 
+function supportsNativeHlsPlayback() {
+  if (typeof document === "undefined") return false;
+  const video = document.createElement("video");
+  return (
+    video.canPlayType("application/vnd.apple.mpegurl") !== "" ||
+    video.canPlayType("application/x-mpegURL") !== ""
+  );
+}
+
 function supportsElementFullscreen(
   element: HTMLDivElement | null
 ): element is HTMLDivElement & {
   requestFullscreen: () => Promise<void>;
 } {
   return Boolean(element && typeof element.requestFullscreen === "function");
+}
+
+interface NavigatorWithStandalone extends Navigator {
+  standalone?: boolean;
+}
+
+function detectStandaloneWebApp() {
+  if (typeof window === "undefined") return false;
+  if (window.matchMedia("(display-mode: standalone)").matches) return true;
+  return (navigator as NavigatorWithStandalone).standalone === true;
+}
+
+// Extend HTMLVideoElement to include webkit PiP API present in Safari/iOS
+interface WebkitVideoElement extends HTMLVideoElement {
+  webkitSupportsPresentationMode?: (mode: string) => boolean;
+  webkitSetPresentationMode?: (mode: string) => void;
+  webkitPresentationMode?: string;
+}
+
+function supportsPictureInPicture(video: HTMLVideoElement | null): boolean {
+  if (!video) return false;
+  const wv = video as WebkitVideoElement;
+  // Standard W3C API
+  if (typeof document !== "undefined" && "pictureInPictureEnabled" in document) {
+    return document.pictureInPictureEnabled && !video.disablePictureInPicture;
+  }
+  // Safari/iOS webkit fallback
+  return typeof wv.webkitSupportsPresentationMode === "function" &&
+    wv.webkitSupportsPresentationMode("picture-in-picture");
+}
+
+function formatPictureInPictureError(
+  error: unknown,
+  isStandaloneWebApp: boolean
+) {
+  const name = error instanceof DOMException ? error.name : null;
+
+  if (name === "NotAllowedError") {
+    return "Picture-in-picture was blocked by iOS. Try again while the video is playing and the player stays on screen.";
+  }
+
+  if (name === "InvalidStateError") {
+    return "Picture-in-picture is not ready yet. Let playback start, then try again.";
+  }
+
+  if (name === "NotSupportedError" && isStandaloneWebApp) {
+    return "Picture-in-picture is not available in the installed iPhone app. Open Aperture in Safari or use the external player instead.";
+  }
+
+  if (name === "NotSupportedError") {
+    return "Picture-in-picture is not available for this video in the current browser.";
+  }
+
+  return isStandaloneWebApp
+    ? "Picture-in-picture failed in the installed iPhone app. Try Safari or the external player while we finish the standalone fix."
+    : "Picture-in-picture failed in this browser session.";
 }
 
 type PlayerHoverCardProps = {
@@ -165,9 +271,12 @@ export function VideoPlayer({
   const currentEpisodeRef = useRef<HTMLButtonElement>(null);
   const ccButtonRef = useRef<HTMLButtonElement>(null);
   const ccPanelRef = useRef<HTMLDivElement>(null);
+  const overflowMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const overflowMenuPanelRef = useRef<HTMLDivElement>(null);
   const lastReportedTime = useRef(0);
   const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didSeekToStart = useRef(false);
+  const lastFallbackRestartAt = useRef(0);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -181,6 +290,7 @@ export function VideoPlayer({
   const [isDragging, setIsDragging] = useState(false);
   const [isEpisodeSelectorOpen, setIsEpisodeSelectorOpen] = useState(false);
   const [openEpisodeSeasonId, setOpenEpisodeSeasonId] = useState<string | null>(null);
+  const [isOverflowMenuOpen, setIsOverflowMenuOpen] = useState(false);
 
   // Subtitle state
   const [subtitles, setSubtitles] = useState<SubtitleFile[]>([]);
@@ -196,19 +306,54 @@ export function VideoPlayer({
   const [subtitleDeletingId, setSubtitleDeletingId] = useState<string | null>(null);
   const [subtitleError, setSubtitleError] = useState<string | null>(null);
 
-  // Stream mode: "direct" supports native range-request seeking,
-  // "remux"/"transcode" requires URL reload with ?start= for seeking
+  // Stream mode describes the server-side transport. Some browsers can play the
+  // transcoded fallback through native HLS, which is seekable like direct play.
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
+  const [supportsNativeHls, setSupportsNativeHls] = useState<boolean | null>(null);
+  const [clientDevice, setClientDevice] = useState<ClientDevice>("desktop");
+  const [isStandaloneWebApp, setIsStandaloneWebApp] = useState(false);
+  const [hasDetectedEnvironment, setHasDetectedEnvironment] = useState(false);
+  const [playbackStrategy, setPlaybackStrategy] = useState<PlaybackStrategy>("auto");
+  const [playbackNotice, setPlaybackNotice] = useState<string | null>(null);
+  const [playerNotice, setPlayerNotice] = useState<string | null>(null);
   // Time offset when we restart a transcoded stream at a non-zero position
   const [timeOffset, setTimeOffset] = useState(0);
 
-  const isDirectPlay = !streamInfo || streamInfo.mode === "direct";
+  // Picture-in-Picture state
+  const [isPiP, setIsPiP] = useState(false);
+  const [isPipSupported, setIsPipSupported] = useState(false);
+
+  const requestedHls = streamInfo?.effectiveMode === "hls";
+  const shouldUseHls = Boolean(
+    hlsUrl && supportsNativeHls && requestedHls && streamInfo?.mode !== "direct"
+  );
+  const isSeekablePlayback = streamInfo?.mode === "direct" || shouldUseHls;
+  const playbackBaseUrl = shouldUseHls && hlsUrl ? hlsUrl : streamUrl;
+  const isPlaybackStrategyReady = streamInfo !== null && supportsNativeHls !== null;
+  const shouldAutoEnterFullscreen =
+    hasDetectedEnvironment && !(clientDevice === "mobile" && isStandaloneWebApp);
+
+  useEffect(() => {
+    setSupportsNativeHls(supportsNativeHlsPlayback());
+    setClientDevice(detectClientDevice());
+    setIsStandaloneWebApp(detectStandaloneWebApp());
+    setHasDetectedEnvironment(true);
+    try {
+      setPlaybackStrategy(parseStoredStrategy(localStorage.getItem(PLAYBACK_STRATEGY_STORAGE_KEY)));
+    } catch {
+      setPlaybackStrategy("auto");
+    }
+  }, []);
 
   // Fetch stream info on mount to determine playback mode
   useEffect(() => {
     let isCancelled = false;
     const infoUrl = streamUrl.replace(/\/stream$/, "/stream/info");
-    fetch(infoUrl)
+    const params = new URLSearchParams({
+      strategy: playbackStrategy,
+      device: clientDevice,
+    });
+    fetch(`${infoUrl}?${params.toString()}`)
       .then((r) => r.json())
       .then((info: StreamInfo) => {
         if (isCancelled) return;
@@ -217,22 +362,58 @@ export function VideoPlayer({
       })
       .catch(() => {
         if (isCancelled) return;
-        setStreamInfo({ mode: "direct", duration: 0 });
+        setStreamInfo({
+          mode: "direct",
+          effectiveMode: "direct",
+          requestedStrategy: playbackStrategy,
+          effectiveStrategy: playbackStrategy,
+          duration: 0,
+        });
       });
     return () => {
       isCancelled = true;
     };
-  }, [streamUrl]);
+  }, [streamUrl, playbackStrategy, clientDevice]);
 
-  // Build the effective video src (with ?start= for transcoded streams)
+  useEffect(() => {
+    if (!streamInfo || supportsNativeHls === null) {
+      setPlaybackNotice(null);
+      return;
+    }
+
+    if (
+      playbackStrategy === "hls" &&
+      streamInfo.mode !== "direct" &&
+      streamInfo.effectiveMode === "hls" &&
+      !supportsNativeHls
+    ) {
+      setPlaybackNotice("HLS is not supported by this browser. Using Classic fallback.");
+      return;
+    }
+
+    if (
+      streamInfo.requestedStrategy &&
+      streamInfo.effectiveStrategy &&
+      streamInfo.requestedStrategy !== streamInfo.effectiveStrategy
+    ) {
+      setPlaybackNotice(
+        `${playbackModeLabel(streamInfo.requestedStrategy)} is not available here. Using ${playbackModeLabel(streamInfo.effectiveStrategy)}.`
+      );
+      return;
+    }
+
+    setPlaybackNotice(null);
+  }, [streamInfo, supportsNativeHls, playbackStrategy]);
+
+  // Build the effective video src (with ?start= only for the live fragmented MP4 path)
   const getStreamSrc = useCallback(
     (seekTime?: number) => {
-      const base = hlsUrl || streamUrl;
-      if (isDirectPlay || !seekTime || seekTime <= 0) return base;
+      const base = playbackBaseUrl;
+      if (shouldUseHls || isSeekablePlayback || !seekTime || seekTime <= 0) return base;
       const sep = base.includes("?") ? "&" : "?";
       return `${base}${sep}start=${Math.floor(seekTime)}`;
     },
-    [hlsUrl, streamUrl, isDirectPlay]
+    [playbackBaseUrl, shouldUseHls, isSeekablePlayback]
   );
 
   // Effective time for display = video.currentTime + timeOffset
@@ -250,13 +431,13 @@ export function VideoPlayer({
   const resetHideTimer = useCallback(() => {
     setShowControls(true);
     if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
-    if (isEpisodeSelectorOpen || isCcPanelOpen) return;
+    if (isEpisodeSelectorOpen || isCcPanelOpen || isOverflowMenuOpen) return;
     hideControlsTimer.current = setTimeout(() => {
       if (videoRef.current && !videoRef.current.paused) {
         setShowControls(false);
       }
     }, 3000);
-  }, [isEpisodeSelectorOpen, isCcPanelOpen]);
+  }, [isEpisodeSelectorOpen, isCcPanelOpen, isOverflowMenuOpen]);
 
   useEffect(() => {
     return () => {
@@ -303,6 +484,21 @@ export function VideoPlayer({
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [isCcPanelOpen]);
+
+  useEffect(() => {
+    if (!isOverflowMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (overflowMenuPanelRef.current?.contains(target)) return;
+      if (overflowMenuButtonRef.current?.contains(target)) return;
+      setIsOverflowMenuOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [isOverflowMenuOpen]);
 
   // Load and reconcile subtitle list when mediaId changes
   useEffect(() => {
@@ -415,6 +611,7 @@ export function VideoPlayer({
     setDuration(0);
     setBuffered(0);
     setTimeOffset(0);
+    lastFallbackRestartAt.current = 0;
     setShowControls(true);
     setIsLoading(true);
     setIsSeeking(false);
@@ -423,21 +620,28 @@ export function VideoPlayer({
 
     if (!video) return;
     video.pause();
-    video.src = hlsUrl || streamUrl;
+    if (!isPlaybackStrategyReady) {
+      video.removeAttribute("src");
+      video.load();
+      return;
+    }
+    video.src = playbackBaseUrl;
     video.load();
     safePlay(video);
-  }, [streamUrl, hlsUrl]);
-  // Seek to startTime once metadata is loaded (for direct play)
-  // For transcoded streams, load with ?start= from the start
+  }, [playbackBaseUrl, isPlaybackStrategyReady]);
+  // Seek to startTime once metadata is loaded for direct play/native HLS.
+  // The live fragmented MP4 fallback still requires ?start= reloads.
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !startTime || startTime <= 0 || !streamInfo) return;
+    if (!video || !startTime || startTime <= 0 || !streamInfo || !isPlaybackStrategyReady)
+      return;
 
-    if (!isDirectPlay) {
+    if (!isSeekablePlayback) {
       if (!didSeekToStart.current) {
         didSeekToStart.current = true;
         setTimeOffset(startTime);
         video.src = getStreamSrc(startTime);
+        video.load();
         safePlay(video);
       }
       return;
@@ -455,14 +659,14 @@ export function VideoPlayer({
       video.addEventListener("loadedmetadata", onLoaded);
       return () => video.removeEventListener("loadedmetadata", onLoaded);
     }
-  }, [startTime, streamInfo, isDirectPlay, getStreamSrc]);
-  // Unified seek function for both direct and transcoded streams
+  }, [startTime, streamInfo, isSeekablePlayback, getStreamSrc, isPlaybackStrategyReady]);
+  // Unified seek function for both seekable playback and the live MP4 fallback
   const seekTo = useCallback(
     (targetTime: number) => {
       const video = videoRef.current;
-      if (!video) return;
+      if (!video || !isPlaybackStrategyReady) return;
 
-      if (isDirectPlay) {
+      if (isSeekablePlayback) {
         video.currentTime = targetTime;
         setCurrentTime(targetTime);
         return;
@@ -485,15 +689,21 @@ export function VideoPlayer({
         video.currentTime = adjustedTarget;
         setCurrentTime(adjustedTarget);
       } else {
+        const now = Date.now();
+        // Guard against rapid scrub restarts while ffmpeg spins up a new stream.
+        if (now - lastFallbackRestartAt.current < 1000) return;
+        lastFallbackRestartAt.current = now;
+
         // Reload with new start position
         setTimeOffset(targetTime);
         setCurrentTime(0);
         setIsLoading(true);
         video.src = getStreamSrc(targetTime);
+        video.load();
         safePlay(video);
       }
     },
-    [isDirectPlay, timeOffset, getStreamSrc]
+    [isPlaybackStrategyReady, isSeekablePlayback, timeOffset, getStreamSrc]
   );
 
   const enterFullscreen = useCallback(() => {
@@ -506,15 +716,41 @@ export function VideoPlayer({
   }, []);
 
   useEffect(() => {
+    if (!shouldAutoEnterFullscreen) return;
     enterFullscreen();
-  }, [enterFullscreen]);
+  }, [enterFullscreen, shouldAutoEnterFullscreen]);
 
   useEffect(() => {
+    if (clientDevice !== "mobile") return;
+    const orientation = (screen.orientation as MaybeScreenOrientation | undefined) ??
+      undefined;
+    const lock = orientation?.lock;
+    if (typeof lock !== "function") return;
+
+    const lockLandscape = () => {
+      safelyHandlePromise(lock.call(orientation, "landscape"));
+    };
+
+    lockLandscape();
+    document.addEventListener("fullscreenchange", lockLandscape);
+    return () => {
+      document.removeEventListener("fullscreenchange", lockLandscape);
+      const unlock = orientation?.unlock;
+      try {
+        if (typeof unlock === "function") {
+          unlock.call(orientation);
+        }
+      } catch {}
+    };
+  }, [clientDevice]);
+
+  useEffect(() => {
+    if (!shouldAutoEnterFullscreen) return;
     const el = containerRef.current;
     if (!supportsElementFullscreen(el)) return;
 
     const handleFullscreenChange = () => {
-      if (document.fullscreenElement !== el) {
+      if (document.fullscreenElement !== el && !isPiP) {
         onClose();
       }
     };
@@ -522,9 +758,148 @@ export function VideoPlayer({
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () =>
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, [onClose]);
+  }, [isPiP, onClose, shouldAutoEnterFullscreen]);
 
-  // Keyboard shortcuts
+  // Picture-in-Picture: detect support and sync state with browser PiP events
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    setIsPipSupported(supportsPictureInPicture(video));
+
+    const onEnterPiP = () => {
+      setIsPiP(true);
+      setPlayerNotice(null);
+    };
+    const onLeavePiP = () => setIsPiP(false);
+    const onPresentationModeChange = () => {
+      const wv = video as WebkitVideoElement;
+      const isInPiP = wv.webkitPresentationMode === "picture-in-picture";
+      setIsPiP(isInPiP);
+      if (isInPiP) {
+        setPlayerNotice(null);
+      }
+    };
+
+    video.addEventListener("enterpictureinpicture", onEnterPiP);
+    video.addEventListener("leavepictureinpicture", onLeavePiP);
+    // Safari/iOS webkit equivalents
+    video.addEventListener("webkitpresentationmodechanged", onPresentationModeChange);
+
+    return () => {
+      video.removeEventListener("enterpictureinpicture", onEnterPiP);
+      video.removeEventListener("leavepictureinpicture", onLeavePiP);
+      video.removeEventListener(
+        "webkitpresentationmodechanged",
+        onPresentationModeChange
+      );
+    };
+  }, []);
+
+  const handleTogglePiP = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const wv = video as WebkitVideoElement;
+    setPlayerNotice(null);
+
+    try {
+      if (isPiP) {
+        // Exit PiP
+        if (typeof document.exitPictureInPicture === "function") {
+          await document.exitPictureInPicture();
+        } else if (typeof wv.webkitSetPresentationMode === "function") {
+          wv.webkitSetPresentationMode("inline");
+        }
+      } else {
+        // Enter PiP
+        if (typeof video.requestPictureInPicture === "function") {
+          await video.requestPictureInPicture();
+        } else if (typeof wv.webkitSetPresentationMode === "function") {
+          wv.webkitSetPresentationMode("picture-in-picture");
+        }
+      }
+    } catch (error) {
+      const name = error instanceof DOMException ? error.name : "UnknownError";
+      const message = error instanceof Error ? error.message : "Unknown failure";
+      const notice = formatPictureInPictureError(error, isStandaloneWebApp);
+
+      console.warn("Aperture PiP request failed", {
+        name,
+        message,
+        isStandaloneWebApp,
+        isFullscreen: document.fullscreenElement === containerRef.current,
+        presentationMode: wv.webkitPresentationMode ?? "unknown",
+        readyState: video.readyState,
+        paused: video.paused,
+      });
+
+      if (name === "NotSupportedError") {
+        setIsPipSupported(false);
+      }
+
+      setPlayerNotice(notice);
+      onError?.(notice);
+    }
+  }, [isPiP, isStandaloneWebApp, onError]);
+
+  // Media Session API — powers lock screen controls and AirPlay/PiP UI on iOS
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title,
+      artist: "Aperture",
+      artwork: posterUrl
+        ? [{ src: posterUrl, sizes: "any", type: "image/jpeg" }]
+        : [],
+    });
+
+    const seekOffset = 10;
+    navigator.mediaSession.setActionHandler("play", () => {
+      const video = videoRef.current;
+      if (video) safePlay(video);
+    });
+    navigator.mediaSession.setActionHandler("pause", () => {
+      const video = videoRef.current;
+      if (video) video.pause();
+    });
+    navigator.mediaSession.setActionHandler("seekbackward", (details) => {
+      seekTo(Math.max(0, effectiveTime - (details.seekOffset ?? seekOffset)));
+    });
+    navigator.mediaSession.setActionHandler("seekforward", (details) => {
+      seekTo(Math.min(effectiveDuration || Infinity, effectiveTime + (details.seekOffset ?? seekOffset)));
+    });
+    navigator.mediaSession.setActionHandler("previoustrack", onPreviousEpisode ?? null);
+    navigator.mediaSession.setActionHandler("nexttrack", onNextEpisode ?? null);
+
+    return () => {
+      // Clean up action handlers when the player unmounts
+      (["play", "pause", "seekbackward", "seekforward", "previoustrack", "nexttrack"] as MediaSessionAction[]).forEach(
+        (action) => {
+          try { navigator.mediaSession.setActionHandler(action, null); } catch {}
+        }
+      );
+    };
+  }, [title, posterUrl, effectiveTime, effectiveDuration, seekTo, onPreviousEpisode, onNextEpisode]);
+
+  // Keep Media Session playback state in sync
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+  }, [isPlaying]);
+
+  // Update Media Session position state for lock screen scrubber
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    if (!effectiveDuration || effectiveDuration <= 0) return;
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: effectiveDuration,
+        playbackRate: videoRef.current?.playbackRate ?? 1,
+        position: Math.min(effectiveTime, effectiveDuration),
+      });
+    } catch {}
+  }, [effectiveTime, effectiveDuration]);
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const video = videoRef.current;
@@ -610,14 +985,14 @@ export function VideoPlayer({
     const video = videoRef.current;
     if (!video || video.buffered.length === 0) return;
     const end = video.buffered.end(video.buffered.length - 1);
-    if (isDirectPlay) {
+    if (isSeekablePlayback) {
       setBuffered(video.duration > 0 ? end / video.duration : 0);
     } else {
       setBuffered(
         effectiveDuration > 0 ? (end + timeOffset) / effectiveDuration : 0
       );
     }
-  }, [isDirectPlay, effectiveDuration, timeOffset]);
+  }, [isSeekablePlayback, effectiveDuration, timeOffset]);
 
   // Scrub bar: click / drag to seek
   const seekToPosition = useCallback(
@@ -868,6 +1243,20 @@ export function VideoPlayer({
     setOpenEpisodeSeasonId((prev) => (prev === seasonId ? null : seasonId));
   }, []);
 
+  const handlePlaybackStrategyChange = useCallback(
+    (event: React.ChangeEvent<HTMLSelectElement>) => {
+      const next = parseStoredStrategy(event.target.value);
+      setPlaybackStrategy(next);
+      try {
+        localStorage.setItem(PLAYBACK_STRATEGY_STORAGE_KEY, next);
+      } catch {
+        // Ignore storage failures and keep in-memory preference.
+      }
+      resetHideTimer();
+    },
+    [resetHideTimer]
+  );
+
   return (
     <div
       ref={containerRef}
@@ -882,7 +1271,6 @@ export function VideoPlayer({
       <video
         ref={videoRef}
         className="h-full w-full cursor-pointer bg-black object-contain"
-        src={getStreamSrc()}
         poster={posterUrl}
         playsInline
         autoPlay
@@ -912,7 +1300,7 @@ export function VideoPlayer({
         onDurationChange={() => {
           const d = videoRef.current?.duration;
           if (d && isFinite(d) && d > 0) {
-            if (isDirectPlay) setDuration(d);
+            if (isSeekablePlayback) setDuration(d);
           }
         }}
         onProgress={handleProgress}
@@ -934,11 +1322,26 @@ export function VideoPlayer({
       />
 
       {/* Loading spinner */}
-      {isLoading && (isPlaying || isSeeking) && (
+      {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <Loader2 className="h-12 w-12 animate-spin text-white/80" />
         </div>
       )}
+
+      {playbackNotice || playerNotice ? (
+        <div className="absolute left-1/2 top-4 z-30 flex w-[min(30rem,calc(100%-2rem))] -translate-x-1/2 flex-col gap-2">
+          {playbackNotice ? (
+            <div className="rounded-xl border border-amber-300/35 bg-black/75 px-4 py-2 text-center text-xs text-amber-100 backdrop-blur">
+              {playbackNotice}
+            </div>
+          ) : null}
+          {playerNotice ? (
+            <div className="rounded-xl border border-red-300/35 bg-black/80 px-4 py-2 text-center text-xs text-red-100 backdrop-blur">
+              {playerNotice}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Click-to-play overlay when paused and not started */}
       {!isPlaying && currentTime === 0 && timeOffset === 0 && !isLoading && (
@@ -1315,13 +1718,20 @@ export function VideoPlayer({
               <Monitor className="h-4 w-4" />
             </button>
           )}
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
-            aria-label="Close player"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          {isPipSupported && (
+            <button
+              onClick={handleTogglePiP}
+              className={`rounded-lg p-1.5 transition-colors ${
+                isPiP
+                  ? "text-accent hover:bg-white/10"
+                  : "text-white/70 hover:bg-white/10 hover:text-white"
+              }`}
+              title={isPiP ? "Exit picture-in-picture" : "Picture-in-picture"}
+              aria-label={isPiP ? "Exit picture-in-picture" : "Picture-in-picture"}
+            >
+              <PictureInPicture2 className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -1355,29 +1765,29 @@ export function VideoPlayer({
         </div>
 
         {/* Controls row */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <button
             onClick={togglePlay}
-            className="rounded-lg p-1.5 text-white hover:bg-white/10 transition-colors"
+            className="rounded-lg p-1 sm:p-1.5 text-white hover:bg-white/10 transition-colors"
             title={isPlaying ? "Pause (K)" : "Play (K)"}
           >
             {isPlaying ? (
-              <Pause className="h-5 w-5" />
+              <Pause className="h-4 w-4 sm:h-5 sm:w-5" />
             ) : (
-              <Play className="h-5 w-5 fill-current" />
+              <Play className="h-4 w-4 sm:h-5 sm:w-5 fill-current" />
             )}
           </button>
 
           <button
             onClick={() => skip(-10)}
-            className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+            className="rounded-lg p-1 sm:p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
             title="Back 10s (←)"
           >
             <RotateCcw className="h-4 w-4" />
           </button>
           <button
             onClick={() => skip(10)}
-            className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+            className="rounded-lg p-1 sm:p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
             title="Forward 10s (→)"
           >
             <RotateCw className="h-4 w-4" />
@@ -1390,7 +1800,7 @@ export function VideoPlayer({
                 video.muted = !video.muted;
                 setIsMuted(video.muted);
               }}
-              className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+              className="rounded-lg p-1 sm:p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
               title="Mute (M)"
             >
               {isMuted || volume === 0 ? (
@@ -1399,113 +1809,258 @@ export function VideoPlayer({
                 <Volume2 className="h-4 w-4" />
               )}
             </button>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={isMuted ? 0 : volume}
-              onChange={handleVolumeChange}
-              className="w-0 group-hover/vol:w-20 transition-all duration-200 accent-accent cursor-pointer opacity-0 group-hover/vol:opacity-100"
-            />
+            {clientDevice !== "mobile" && (
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={isMuted ? 0 : volume}
+                onChange={handleVolumeChange}
+                className="w-0 group-hover/vol:w-20 transition-all duration-200 accent-accent cursor-pointer opacity-0 group-hover/vol:opacity-100"
+              />
+            )}
           </div>
 
-          <span className="text-xs text-white/70 tabular-nums ml-1">
+          <span className="text-xs text-white/70 tabular-nums ml-0.5 sm:ml-1">
             {formatTime(effectiveTime)} / {formatTime(effectiveDuration)}
           </span>
 
           <div className="flex-1" />
 
-          {!isDirectPlay && (
-            <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1">
-              {streamInfo?.mode === "remux" ? "remux" : "transcode"}
-            </span>
+          {/* Secondary controls — desktop only */}
+          {clientDevice !== "mobile" && (
+            <>
+              {streamInfo?.mode && streamInfo.mode !== "direct" && (
+                <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1">
+                  {streamInfo?.mode === "remux" ? "remux" : "transcode"}
+                </span>
+              )}
+
+              <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-white/70">
+                Mode
+                <select
+                  value={playbackStrategy}
+                  onChange={handlePlaybackStrategyChange}
+                  className="rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] uppercase tracking-[0.08em] text-white outline-none"
+                  aria-label="Playback mode"
+                >
+                  <option value="auto">Auto</option>
+                  <option value="classic">Classic</option>
+                  <option value="hls">HLS</option>
+                </select>
+              </label>
+
+              <div className="ml-auto flex items-center gap-2">
+                {mediaId ? (
+                  <div className="relative">
+                    <button
+                      ref={ccButtonRef}
+                      onClick={toggleCcPanel}
+                      className={`relative rounded-xl border px-3 py-2 text-white/80 transition-colors ${
+                        isCcPanelOpen
+                          ? "border-accent/50 bg-accent/20 text-white"
+                          : "border-white/10 bg-white/5 hover:bg-white/10 hover:text-white"
+                      }`}
+                      aria-label="Subtitle options"
+                      title="Subtitles"
+                    >
+                      <Captions className="h-4 w-4" />
+                      {activeSubtitleId && subtitlesEnabled ? (
+                        <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-accent" />
+                      ) : null}
+                    </button>
+                  </div>
+                ) : null}
+                {canBrowseEpisodes ? (
+                  <div className="group relative">
+                    <button
+                      ref={episodeSelectorButtonRef}
+                      onClick={toggleEpisodeSelector}
+                      className={`peer rounded-xl border px-3 py-2 text-white/80 transition-colors ${
+                        isEpisodeSelectorOpen
+                          ? "border-accent/50 bg-accent/20 text-white"
+                          : "border-white/10 bg-white/5 hover:bg-white/10 hover:text-white"
+                      }`}
+                      aria-label="Browse episodes"
+                    >
+                      <ListVideo className="h-4 w-4" />
+                    </button>
+                    <PlayerHoverCard
+                      label="Episode selector"
+                      target={{
+                        id: "episodes",
+                        title: "Browse all seasons",
+                        subtitle: "Open the in-player episode list.",
+                      }}
+                    />
+                  </div>
+                ) : null}
+                <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
+                  <div className="group relative">
+                    <button
+                      onClick={onPreviousEpisode}
+                      disabled={!onPreviousEpisode}
+                      className="peer rounded-lg p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label={
+                        previousEpisode
+                          ? `Previous episode: ${previousEpisode.title}`
+                          : "No previous episode"
+                      }
+                    >
+                      <SkipBack className="h-4 w-4" />
+                    </button>
+                    <PlayerHoverCard label="Previous episode" target={previousEpisode} />
+                  </div>
+                  <div className="group relative">
+                    <button
+                      onClick={onNextEpisode}
+                      disabled={!onNextEpisode}
+                      className="peer rounded-lg p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label={
+                        nextEpisode ? `Next episode: ${nextEpisode.title}` : "No next episode"
+                      }
+                    >
+                      <SkipForward className="h-4 w-4" />
+                    </button>
+                    <PlayerHoverCard label="Next episode" target={nextEpisode} />
+                  </div>
+                </div>
+                <button
+                  onClick={onClose}
+                  className="rounded-xl border border-white/10 bg-white/5 p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  title="Exit player"
+                  aria-label="Exit player"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </>
           )}
 
-          <div className="ml-auto flex items-center gap-2">
-            {mediaId ? (
-              <div className="relative">
-                <button
-                  ref={ccButtonRef}
-                  onClick={toggleCcPanel}
-                  className={`relative rounded-xl border px-3 py-2 text-white/80 transition-colors ${
-                    isCcPanelOpen
-                      ? "border-accent/50 bg-accent/20 text-white"
-                      : "border-white/10 bg-white/5 hover:bg-white/10 hover:text-white"
-                  }`}
-                  aria-label="Subtitle options"
-                  title="Subtitles"
+          {/* Mobile overflow menu */}
+          {clientDevice === "mobile" && (
+            <div className="relative">
+              <button
+                ref={overflowMenuButtonRef}
+                onClick={() => setIsOverflowMenuOpen((v) => !v)}
+                className={`rounded-xl border p-1.5 text-white/80 transition-colors ${
+                  isOverflowMenuOpen
+                    ? "border-accent/50 bg-accent/20 text-white"
+                    : "border-white/10 bg-white/5 hover:bg-white/10 hover:text-white"
+                }`}
+                aria-label="More controls"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+
+              {isOverflowMenuOpen && (
+                <div
+                  ref={overflowMenuPanelRef}
+                  className="absolute bottom-full right-0 mb-2 min-w-[200px] rounded-2xl border border-white/10 bg-black/90 p-3 shadow-2xl backdrop-blur-xl"
                 >
-                  <Captions className="h-4 w-4" />
-                  {activeSubtitleId && subtitlesEnabled ? (
-                    <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-accent" />
+                  {/* Playback mode */}
+                  <div className="pb-2 mb-2 border-b border-white/10">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-white/40 mb-1.5">Playback Mode</p>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={playbackStrategy}
+                        onChange={handlePlaybackStrategyChange}
+                        className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-[12px] text-white outline-none"
+                        aria-label="Playback mode"
+                      >
+                        <option value="auto">Auto</option>
+                        <option value="classic">Classic</option>
+                        <option value="hls">HLS</option>
+                      </select>
+                      {streamInfo?.mode && streamInfo.mode !== "direct" && (
+                        <span className="text-[10px] text-white/40 uppercase tracking-wider whitespace-nowrap">
+                          {streamInfo.mode === "remux" ? "remux" : "transcode"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Subtitles */}
+                  {mediaId ? (
+                    <button
+                      onClick={() => {
+                        toggleCcPanel();
+                        setIsOverflowMenuOpen(false);
+                      }}
+                      className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-sm transition-colors ${
+                        isCcPanelOpen
+                          ? "bg-accent/20 text-white"
+                          : "text-white/80 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      <Captions className="h-4 w-4 flex-shrink-0" />
+                      <span>Subtitles</span>
+                      {activeSubtitleId && subtitlesEnabled ? (
+                        <span className="ml-auto h-2 w-2 flex-shrink-0 rounded-full bg-accent" />
+                      ) : null}
+                    </button>
                   ) : null}
-                </button>
-              </div>
-            ) : null}
-            {canBrowseEpisodes ? (
-              <div className="group relative">
-                <button
-                  ref={episodeSelectorButtonRef}
-                  onClick={toggleEpisodeSelector}
-                  className={`peer rounded-xl border px-3 py-2 text-white/80 transition-colors ${
-                    isEpisodeSelectorOpen
-                      ? "border-accent/50 bg-accent/20 text-white"
-                      : "border-white/10 bg-white/5 hover:bg-white/10 hover:text-white"
-                  }`}
-                  aria-label="Browse episodes"
-                >
-                  <ListVideo className="h-4 w-4" />
-                </button>
-                <PlayerHoverCard
-                  label="Episode selector"
-                  target={{
-                    id: "episodes",
-                    title: "Browse all seasons",
-                    subtitle: "Open the in-player episode list.",
-                  }}
-                />
-              </div>
-            ) : null}
-            <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
-              <div className="group relative">
-                <button
-                  onClick={onPreviousEpisode}
-                  disabled={!onPreviousEpisode}
-                  className="peer rounded-lg p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label={
-                    previousEpisode
-                      ? `Previous episode: ${previousEpisode.title}`
-                      : "No previous episode"
-                  }
-                >
-                  <SkipBack className="h-4 w-4" />
-                </button>
-                <PlayerHoverCard label="Previous episode" target={previousEpisode} />
-              </div>
-              <div className="group relative">
-                <button
-                  onClick={onNextEpisode}
-                  disabled={!onNextEpisode}
-                  className="peer rounded-lg p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label={
-                    nextEpisode ? `Next episode: ${nextEpisode.title}` : "No next episode"
-                  }
-                >
-                  <SkipForward className="h-4 w-4" />
-                </button>
-                <PlayerHoverCard label="Next episode" target={nextEpisode} />
-              </div>
+
+                  {/* Episode selector */}
+                  {canBrowseEpisodes ? (
+                    <button
+                      onClick={() => {
+                        toggleEpisodeSelector();
+                        setIsOverflowMenuOpen(false);
+                      }}
+                      className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-sm transition-colors ${
+                        isEpisodeSelectorOpen
+                          ? "bg-accent/20 text-white"
+                          : "text-white/80 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      <ListVideo className="h-4 w-4 flex-shrink-0" />
+                      <span>Episodes</span>
+                    </button>
+                  ) : null}
+
+                  {/* Previous / Next episode */}
+                  <div className="mt-2 pt-2 border-t border-white/10 flex gap-2">
+                    <button
+                      onClick={onPreviousEpisode}
+                      disabled={!onPreviousEpisode}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-2 text-sm text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label={
+                        previousEpisode
+                          ? `Previous episode: ${previousEpisode.title}`
+                          : "No previous episode"
+                      }
+                    >
+                      <SkipBack className="h-4 w-4" />
+                      <span className="text-xs">Prev</span>
+                    </button>
+                    <button
+                      onClick={onNextEpisode}
+                      disabled={!onNextEpisode}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-2 text-sm text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label={
+                        nextEpisode ? `Next episode: ${nextEpisode.title}` : "No next episode"
+                      }
+                    >
+                      <span className="text-xs">Next</span>
+                      <SkipForward className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-            <button
-              onClick={onClose}
-              className="rounded-xl border border-white/10 bg-white/5 p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-              title="Exit player"
-              aria-label="Exit player"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+          )}
+
+          {/* Close — always visible */}
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-white/10 bg-white/5 p-1.5 sm:p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+            title="Exit player"
+            aria-label="Exit player"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </div>

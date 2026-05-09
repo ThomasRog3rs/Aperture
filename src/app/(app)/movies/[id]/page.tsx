@@ -581,6 +581,7 @@ export default function MovieDetailPage() {
           <VideoPlayer
             title={movie.titleClean}
             streamUrl={`/api/movies/${movie.id}/stream`}
+            hlsUrl={`/api/movies/${movie.id}/hls/master.m3u8`}
             posterUrl={movie.backdropPath ? tmdbImageUrl(movie.backdropPath, "w780") ?? undefined : undefined}
             thumbnailsVttUrl={`/api/movies/${movie.id}/storyboard/vtt`}
             startTime={movie.watchProgressSeconds ?? 0}

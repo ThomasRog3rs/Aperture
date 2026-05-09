@@ -99,6 +99,9 @@ export async function GET(
         "Content-Type": "video/mp4",
         "Accept-Ranges": "none",
         "Cache-Control": "no-store",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers": "Range, Content-Type",
         "X-Playback-Mode": mode,
       },
     });

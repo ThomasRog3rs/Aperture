@@ -679,6 +679,7 @@ export default function SeriesDetailPage() {
           <VideoPlayer
             title={getEpisodePlayerTitle(activeEpisode)}
             streamUrl={`/api/episodes/${activeEpisode.id}/stream`}
+            hlsUrl={`/api/episodes/${activeEpisode.id}/hls/master.m3u8`}
             thumbnailsVttUrl={`/api/episodes/${activeEpisode.id}/storyboard/vtt`}
             startTime={playerStartTime}
             onClose={handleClosePlayer}
