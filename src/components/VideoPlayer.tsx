@@ -154,6 +154,16 @@ function supportsElementFullscreen(
   return Boolean(element && typeof element.requestFullscreen === "function");
 }
 
+interface NavigatorWithStandalone extends Navigator {
+  standalone?: boolean;
+}
+
+function detectStandaloneWebApp() {
+  if (typeof window === "undefined") return false;
+  if (window.matchMedia("(display-mode: standalone)").matches) return true;
+  return (navigator as NavigatorWithStandalone).standalone === true;
+}
+
 // Extend HTMLVideoElement to include webkit PiP API present in Safari/iOS
 interface WebkitVideoElement extends HTMLVideoElement {
   webkitSupportsPresentationMode?: (mode: string) => boolean;
@@ -171,6 +181,33 @@ function supportsPictureInPicture(video: HTMLVideoElement | null): boolean {
   // Safari/iOS webkit fallback
   return typeof wv.webkitSupportsPresentationMode === "function" &&
     wv.webkitSupportsPresentationMode("picture-in-picture");
+}
+
+function formatPictureInPictureError(
+  error: unknown,
+  isStandaloneWebApp: boolean
+) {
+  const name = error instanceof DOMException ? error.name : null;
+
+  if (name === "NotAllowedError") {
+    return "Picture-in-picture was blocked by iOS. Try again while the video is playing and the player stays on screen.";
+  }
+
+  if (name === "InvalidStateError") {
+    return "Picture-in-picture is not ready yet. Let playback start, then try again.";
+  }
+
+  if (name === "NotSupportedError" && isStandaloneWebApp) {
+    return "Picture-in-picture is not available in the installed iPhone app. Open Aperture in Safari or use the external player instead.";
+  }
+
+  if (name === "NotSupportedError") {
+    return "Picture-in-picture is not available for this video in the current browser.";
+  }
+
+  return isStandaloneWebApp
+    ? "Picture-in-picture failed in the installed iPhone app. Try Safari or the external player while we finish the standalone fix."
+    : "Picture-in-picture failed in this browser session.";
 }
 
 type PlayerHoverCardProps = {
@@ -274,6 +311,7 @@ export function VideoPlayer({
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
   const [supportsNativeHls, setSupportsNativeHls] = useState<boolean | null>(null);
   const [clientDevice, setClientDevice] = useState<ClientDevice>("desktop");
+  const [isStandaloneWebApp, setIsStandaloneWebApp] = useState(false);
   const [playbackStrategy, setPlaybackStrategy] = useState<PlaybackStrategy>("auto");
   const [playbackNotice, setPlaybackNotice] = useState<string | null>(null);
   // Time offset when we restart a transcoded stream at a non-zero position
@@ -290,10 +328,12 @@ export function VideoPlayer({
   const isSeekablePlayback = streamInfo?.mode === "direct" || shouldUseHls;
   const playbackBaseUrl = shouldUseHls && hlsUrl ? hlsUrl : streamUrl;
   const isPlaybackStrategyReady = streamInfo !== null && supportsNativeHls !== null;
+  const shouldAutoEnterFullscreen = !(clientDevice === "mobile" && isStandaloneWebApp);
 
   useEffect(() => {
     setSupportsNativeHls(supportsNativeHlsPlayback());
     setClientDevice(detectClientDevice());
+    setIsStandaloneWebApp(detectStandaloneWebApp());
     try {
       setPlaybackStrategy(parseStoredStrategy(localStorage.getItem(PLAYBACK_STRATEGY_STORAGE_KEY)));
     } catch {
@@ -672,8 +712,9 @@ export function VideoPlayer({
   }, []);
 
   useEffect(() => {
+    if (!shouldAutoEnterFullscreen) return;
     enterFullscreen();
-  }, [enterFullscreen]);
+  }, [enterFullscreen, shouldAutoEnterFullscreen]);
 
   useEffect(() => {
     if (clientDevice !== "mobile") return;
@@ -700,11 +741,12 @@ export function VideoPlayer({
   }, [clientDevice]);
 
   useEffect(() => {
+    if (!shouldAutoEnterFullscreen) return;
     const el = containerRef.current;
     if (!supportsElementFullscreen(el)) return;
 
     const handleFullscreenChange = () => {
-      if (document.fullscreenElement !== el) {
+      if (document.fullscreenElement !== el && !isPiP) {
         onClose();
       }
     };
@@ -712,7 +754,7 @@ export function VideoPlayer({
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () =>
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, [onClose]);
+  }, [isPiP, onClose, shouldAutoEnterFullscreen]);
 
   // Picture-in-Picture: detect support and sync state with browser PiP events
   useEffect(() => {
@@ -723,18 +765,23 @@ export function VideoPlayer({
 
     const onEnterPiP = () => setIsPiP(true);
     const onLeavePiP = () => setIsPiP(false);
+    const onPresentationModeChange = () => {
+      const wv = video as WebkitVideoElement;
+      setIsPiP(wv.webkitPresentationMode === "picture-in-picture");
+    };
 
     video.addEventListener("enterpictureinpicture", onEnterPiP);
     video.addEventListener("leavepictureinpicture", onLeavePiP);
     // Safari/iOS webkit equivalents
-    video.addEventListener("webkitpresentationmodechanged", () => {
-      const wv = video as WebkitVideoElement;
-      setIsPiP(wv.webkitPresentationMode === "picture-in-picture");
-    });
+    video.addEventListener("webkitpresentationmodechanged", onPresentationModeChange);
 
     return () => {
       video.removeEventListener("enterpictureinpicture", onEnterPiP);
       video.removeEventListener("leavepictureinpicture", onLeavePiP);
+      video.removeEventListener(
+        "webkitpresentationmodechanged",
+        onPresentationModeChange
+      );
     };
   }, []);
 
@@ -759,10 +806,23 @@ export function VideoPlayer({
           wv.webkitSetPresentationMode("picture-in-picture");
         }
       }
-    } catch {
-      // PiP may be blocked (e.g. no user gesture, policy restriction) — ignore
+    } catch (error) {
+      const name = error instanceof DOMException ? error.name : "UnknownError";
+      const message = error instanceof Error ? error.message : "Unknown failure";
+
+      console.warn("Aperture PiP request failed", {
+        name,
+        message,
+        isStandaloneWebApp,
+        isFullscreen: document.fullscreenElement === containerRef.current,
+        presentationMode: wv.webkitPresentationMode ?? "unknown",
+        readyState: video.readyState,
+        paused: video.paused,
+      });
+
+      onError?.(formatPictureInPictureError(error, isStandaloneWebApp));
     }
-  }, [isPiP]);
+  }, [isPiP, isStandaloneWebApp, onError]);
 
   // Media Session API — powers lock screen controls and AirPlay/PiP UI on iOS
   useEffect(() => {
@@ -1645,13 +1705,6 @@ export function VideoPlayer({
               <PictureInPicture2 className="h-4 w-4" />
             </button>
           )}
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
-            aria-label="Close player"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </div>
       </div>
 
