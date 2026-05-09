@@ -43,12 +43,7 @@ export default function RootLayout({
       <body
         className={`${bodySans.variable} ${displaySerif.variable} ${geistMono.variable} min-h-screen bg-background text-foreground antialiased`}
       >
-        {/* Experimental badge indicating playback is experimental on this branch */}
-        <div className="fixed top-4 right-4 z-50">
-          <div className="inline-flex items-center gap-2 rounded-md bg-amber-400/95 text-black px-3 py-1 text-xs font-semibold shadow">
-            Experimental — playback
-          </div>
-        </div>
+        {/* Experimental badge removed */}
         {children}
       </body>
     </html>
