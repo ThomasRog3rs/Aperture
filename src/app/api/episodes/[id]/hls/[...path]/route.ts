@@ -1,14 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
+import {
+  getHlsAssetPath,
+  isSafeMediaId,
+  isSafeRelativePathSegment,
+} from "@/lib/transcodePaths";
 import { getEpisodeById } from "@/lib/storage";
 import { parseRangeHeader, validateLibraryPath } from "@/lib/streaming";
 import { packageAsHLS } from "@/lib/transcoding";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-const TRANSCODES_DIR = path.join(process.cwd(), "data", "transcodes");
 
 const CONTENT_TYPES: Record<string, string> = {
   ".m3u8": "application/vnd.apple.mpegurl",
@@ -25,15 +28,11 @@ export async function GET(
   if (!id || !segments || segments.length === 0) {
     return NextResponse.json({ error: "Invalid path." }, { status: 400 });
   }
-
-  const hlsDir = path.join(TRANSCODES_DIR, id, "hls");
-
-  // Sanitize: ensure no traversal
-  const relPath = segments.join("/");
-  const resolved = path.resolve(hlsDir, relPath);
-  if (!resolved.startsWith(path.resolve(hlsDir))) {
+  if (!isSafeMediaId(id) || !segments.every(isSafeRelativePathSegment)) {
     return NextResponse.json({ error: "Invalid path." }, { status: 403 });
   }
+
+  const resolved = getHlsAssetPath(id, segments);
 
   if (!fs.existsSync(resolved)) {
     const episode = getEpisodeById(id);
