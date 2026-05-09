@@ -1,0 +1,40 @@
+import type { Movie } from "@/lib/types";
+
+export function createMovie(overrides: Partial<Movie> = {}): Movie {
+  return {
+    id: "movie-1",
+    folderPath: "/library/movie-1",
+    filePath: "/library/movie-1/movie.mkv",
+    fileSizeBytes: 1024,
+    titleRaw: "Movie Raw",
+    titleClean: "Movie Clean",
+    titleEditedAt: null,
+    year: 2024,
+    tmdbId: 1,
+    posterPath: "/poster.jpg",
+    backdropPath: "/backdrop.jpg",
+    runtimeMinutes: 120,
+    tmdbRating: 7.5,
+    genres: ["Drama"],
+    omdbGenres: ["Drama"],
+    directors: ["Director One"],
+    writers: ["Writer One"],
+    actors: ["Actor One"],
+    userGenres: ["Drama"],
+    youtubeTrailerKey: "abc123",
+    personalRating: null,
+    errorMessage: null,
+    lastSyncedAt: 1,
+    xxxRated: false,
+    watched: false,
+    transcodeStatus: "none",
+    transcodedPath: null,
+    hlsPath: null,
+    storyboardPath: null,
+    watchProgressSeconds: 0,
+    selectedSubtitleId: null,
+    subtitlesEnabled: false,
+    ...overrides,
+  };
+}
+
