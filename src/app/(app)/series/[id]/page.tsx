@@ -1,947 +1,153 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import Image from "next/image";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import {
-  ArrowLeft,
-  ChevronDown,
-  Image as ImageIcon,
-  Loader2,
-  Monitor,
-  Play,
-  Save,
-  Shuffle,
-  Video,
-  Check,
-  Trash2,
-  Info,
-  Edit3,
-  RefreshCw,
-} from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { StatusBanner } from "@/components/StatusBanner";
-import { Modal } from "@/components/Modal";
+import { VideoPlayer } from "@/components/VideoPlayer";
+import { tmdbImageUrl } from "@/lib/format";
+import { SeriesDetailHero } from "./SeriesDetailHero";
+import { SeriesDetailSidebar } from "./SeriesDetailSidebar";
+import { SeriesEditModal } from "./SeriesEditModal";
+import { SeriesEpisodesSection } from "./SeriesEpisodesSection";
+import { SeriesInfoModal } from "./SeriesInfoModal";
 import {
-  VideoPlayer,
-  type VideoPlayerEpisodeListSeason,
-  type VideoPlayerEpisodeTarget,
-} from "@/components/VideoPlayer";
-import { formatRating, tmdbImageUrl } from "@/lib/format";
-import type { Episode, SeasonWithEpisodes, Series } from "@/lib/types";
-
-type EpisodeResponse = {
-  episode: Episode;
-  error?: string;
-};
-
-type SeriesResponse = {
-  series: Series;
-  seasons: SeasonWithEpisodes[];
-  error?: string;
-};
-
-type FolderImage = {
-  name: string;
-  url: string;
-};
-
-type FolderImagesResponse = {
-  images: FolderImage[];
-  error?: string;
-};
-
-type PlaybackLaunchMode = "continue" | "random";
-
-type RandomSessionSummary = {
-  seriesId: string;
-  startedEpisodeIds: string[];
-  currentEpisodeId: string | null;
-  startedEpisodeCount: number;
-  createdAt: number;
-  updatedAt: number;
-  totalEpisodeCount: number;
-  remainingEpisodeCount: number;
-  unwatchedRemainingEpisodeCount: number;
-  watchedRemainingEpisodeCount: number;
-  exhausted: boolean;
-};
-
-type RandomSessionResponse = {
-  session: RandomSessionSummary | null;
-  episode?: Episode | null;
-  exhausted?: boolean;
-  error?: string;
-};
-
-type RandomSessionActionPayload =
-  | { action: "start_new" | "continue" | "next_random" }
-  | { action: "mark_started"; episodeId: string };
-
-function getEpisodeDisplayTitle(episode: Episode): string {
-  return episode.titleClean || episode.titleRaw;
-}
-
-function getEpisodePlayerTitle(episode: Episode): string {
-  return (
-    (episode.episodeNumber != null ? `Episode ${episode.episodeNumber} — ` : "") +
-    getEpisodeDisplayTitle(episode)
-  );
-}
-
-function getSeasonLabel(season: SeasonWithEpisodes): string {
-  return season.seasonNumber != null ? `Season ${season.seasonNumber}` : "Season";
-}
-
-function getEpisodeNumberLabel(episode: Episode): string {
-  return episode.episodeNumber != null ? String(episode.episodeNumber) : "—";
-}
-
-function getEpisodeNavigationTarget(
-  season: SeasonWithEpisodes,
-  episode: Episode
-): VideoPlayerEpisodeTarget {
-  const episodeLabel =
-    episode.episodeNumber != null ? `Episode ${episode.episodeNumber}` : "Episode";
-  return {
-    id: episode.id,
-    title: getEpisodeDisplayTitle(episode),
-    subtitle: `${getSeasonLabel(season)} • ${episodeLabel}`,
-  };
-}
+  getCastCrew,
+  getEpisodePlayerTitle,
+  getHasMissingBasicInfo,
+  getPosterPreview,
+  getSeasonSummary,
+  getSeriesRating,
+} from "./series-detail.selectors";
+import type { SeriesNotice } from "./series-detail.types";
+import { useSeriesDetailData } from "./useSeriesDetailData";
+import { useSeriesEditController } from "./useSeriesEditController";
+import { useSeriesPlaybackController } from "./useSeriesPlaybackController";
 
 export default function SeriesDetailPage() {
   const params = useParams<{ id?: string | string[] }>();
   const router = useRouter();
   const seriesId = Array.isArray(params?.id) ? params.id[0] : params?.id;
-  const [series, setSeries] = useState<Series | null>(null);
-  const [seasons, setSeasons] = useState<SeasonWithEpisodes[]>([]);
-  const [title, setTitle] = useState("");
-  const [posterInput, setPosterInput] = useState("");
-  const [folderImages, setFolderImages] = useState<FolderImage[]>([]);
-  const [folderImagesLoading, setFolderImagesLoading] = useState(false);
-  const [folderImagesError, setFolderImagesError] = useState<string | null>(null);
-  const [selectedFolderImage, setSelectedFolderImage] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [playing, setPlaying] = useState<string | null>(null);
-  const [activeEpisodeId, setActiveEpisodeId] = useState<string | null>(null);
-  const [playbackMode, setPlaybackMode] = useState<PlaybackLaunchMode>("continue");
-  const [playerStartTime, setPlayerStartTime] = useState(0);
-  const [togglingWatched, setTogglingWatched] = useState<Set<string>>(new Set());
-  const [saving, setSaving] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [randomSession, setRandomSession] = useState<RandomSessionSummary | null>(
-    null
+  const [notice, setNotice] = useState<SeriesNotice | null>(null);
+
+  const data = useSeriesDetailData({ seriesId, setNotice });
+  const playback = useSeriesPlaybackController({
+    seasons: data.seasons,
+    setNotice,
+    updateEpisodeInState: data.updateEpisodeInState,
+    requestRandomSessionAction: data.requestRandomSessionAction,
+  });
+  const edit = useSeriesEditController({
+    series: data.series,
+    setSeries: data.setSeries,
+    applySeriesDetail: data.applySeriesDetail,
+    setNotice,
+    onDeleteSuccess: () => router.push("/"),
+  });
+
+  const seasonSummary = useMemo(
+    () => getSeasonSummary(data.series),
+    [data.series]
   );
-  const [randomSessionLoading, setRandomSessionLoading] = useState(false);
-  const [randomAction, setRandomAction] = useState<
-    "start_new" | "continue" | "next_random" | "mark_started" | null
-  >(null);
-  const [notice, setNotice] = useState<{
-    tone: "info" | "success" | "error";
-    message: string;
-  } | null>(null);
-  const [deleting, setDeleting] = useState(false);
-
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
-
-  const loadRandomSession = useCallback(async (id: string) => {
-    setRandomSessionLoading(true);
-    try {
-      const response = await fetch(`/api/series/${id}/random-session`);
-      const data = (await response.json()) as RandomSessionResponse;
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to load random session.");
-      }
-      setRandomSession(data.session ?? null);
-    } catch (error) {
-      setRandomSession(null);
-      setNotice({
-        tone: "error",
-        message:
-          error instanceof Error ? error.message : "Failed to load random session.",
-      });
-    } finally {
-      setRandomSessionLoading(false);
-    }
-  }, []);
-
-  const requestRandomSessionAction = useCallback(
-    async (payload: RandomSessionActionPayload) => {
-      if (!seriesId) {
-        throw new Error("Missing series id in URL.");
-      }
-
-      const response = await fetch(`/api/series/${seriesId}/random-session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = (await response.json()) as RandomSessionResponse;
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to update random session.");
-      }
-      setRandomSession(data.session ?? null);
-      return data;
-    },
-    [seriesId]
+  const seriesRating = useMemo(() => getSeriesRating(data.seasons), [data.seasons]);
+  const castCrew = useMemo(() => getCastCrew(data.seasons), [data.seasons]);
+  const posterPreview = useMemo(
+    () => getPosterPreview(edit.posterInput, data.series),
+    [data.series, edit.posterInput]
   );
-
-  const loadFolderImages = useCallback(
-    async (id: string, currentPoster: string | null) => {
-      setFolderImagesLoading(true);
-      setFolderImagesError(null);
-      try {
-        const response = await fetch(`/api/series/${id}/folder-images`);
-        const data = (await response.json()) as FolderImagesResponse;
-        if (!response.ok || !Array.isArray(data.images)) {
-          throw new Error(data.error || "Failed to load folder images.");
-        }
-        setFolderImages(data.images);
-        const matched = data.images.find(
-          (image) => image.url === (currentPoster ?? "")
-        );
-        setSelectedFolderImage(matched?.url ?? data.images[0]?.url ?? "");
-      } catch (error) {
-        setFolderImages([]);
-        setSelectedFolderImage("");
-        setFolderImagesError(
-          error instanceof Error
-            ? error.message
-            : "Failed to load folder images."
-        );
-      } finally {
-        setFolderImagesLoading(false);
-      }
-    },
-    []
+  const posterUrl = useMemo(
+    () => tmdbImageUrl(posterPreview, "w780"),
+    [posterPreview]
   );
-
-  const fetchSeries = useCallback(async () => {
-    if (!seriesId) {
-      setNotice({ tone: "error", message: "Missing series id in URL." });
-      setSeries(null);
-      setSeasons([]);
-      setRandomSession(null);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setNotice(null);
-    try {
-      const response = await fetch(`/api/series/${seriesId}`);
-      const data = (await response.json()) as SeriesResponse;
-      if (!response.ok || !data.series) {
-        throw new Error(data.error || "Series not found.");
-      }
-      setSeries(data.series);
-      setSeasons(data.seasons ?? data.series.seasons ?? []);
-      setTitle(data.series.titleClean);
-      setPosterInput(data.series.posterPath ?? "");
-      void loadFolderImages(data.series.id, data.series.posterPath ?? null);
-      void loadRandomSession(data.series.id);
-    } catch (error) {
-      setNotice({
-        tone: "error",
-        message:
-          error instanceof Error ? error.message : "Failed to load series.",
-      });
-      setSeries(null);
-      setSeasons([]);
-      setRandomSession(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [loadFolderImages, loadRandomSession, seriesId]);
-
-  useEffect(() => {
-    fetchSeries();
-  }, [fetchSeries]);
-
-  useEffect(() => {
-    const trimmed = posterInput.trim();
-    if (!trimmed) return;
-    const matched = folderImages.find((image) => image.url === trimmed);
-    if (matched && matched.url !== selectedFolderImage) {
-      setSelectedFolderImage(matched.url);
-    }
-  }, [folderImages, posterInput, selectedFolderImage]);
-
-  const orderedEpisodes = useMemo(
-    () =>
-      seasons.flatMap((season) =>
-        season.episodes.map((episode) => ({
-          season,
-          episode,
-          target: getEpisodeNavigationTarget(season, episode),
-        }))
-      ),
-    [seasons]
+  const hasMissingBasicInfo = useMemo(
+    () => getHasMissingBasicInfo(data.series, seriesRating),
+    [data.series, seriesRating]
   );
-
-  const activeEpisodeIndex = useMemo(
-    () =>
-      activeEpisodeId
-        ? orderedEpisodes.findIndex(({ episode }) => episode.id === activeEpisodeId)
-        : -1,
-    [activeEpisodeId, orderedEpisodes]
-  );
-
-  const activeEpisodeItem =
-    activeEpisodeIndex >= 0 ? orderedEpisodes[activeEpisodeIndex] : null;
-  const activeEpisode = activeEpisodeItem?.episode ?? null;
-  const previousEpisodeItem =
-    activeEpisodeIndex > 0 ? orderedEpisodes[activeEpisodeIndex - 1] : null;
-  const nextEpisodeItem =
-    activeEpisodeIndex >= 0 && activeEpisodeIndex < orderedEpisodes.length - 1
-      ? orderedEpisodes[activeEpisodeIndex + 1]
-      : null;
-
-  const episodeSelectorSeasons = useMemo<VideoPlayerEpisodeListSeason[]>(
-    () =>
-      seasons.map((season) => {
-        const sectionTitle = getSeasonLabel(season);
-        return {
-          id: season.id,
-          title: sectionTitle,
-          subtitle:
-            season.titleClean && season.titleClean !== sectionTitle
-              ? season.titleClean
-              : undefined,
-          episodes: season.episodes.map((episode) => {
-            const target = getEpisodeNavigationTarget(season, episode);
-            return {
-              ...target,
-              numberLabel: getEpisodeNumberLabel(episode),
-              watched: episode.watched,
-              isCurrent: episode.id === activeEpisodeId,
-            };
-          }),
-        };
-      }),
-    [activeEpisodeId, seasons]
-  );
-
-  useEffect(() => {
-    if (
-      activeEpisodeId &&
-      !orderedEpisodes.some(({ episode }) => episode.id === activeEpisodeId)
-    ) {
-      setPlayerStartTime(0);
-      setActiveEpisodeId(null);
-      setPlaybackMode("continue");
-    }
-  }, [activeEpisodeId, orderedEpisodes]);
-
-  const updateEpisodeInState = useCallback(
-    (episodeId: string, updates: Partial<Episode>) => {
-      setSeasons((prev) =>
-        prev.map((season) => {
-          let didUpdate = false;
-          const episodes = season.episodes.map((episode) => {
-            if (episode.id !== episodeId) return episode;
-            didUpdate = true;
-            return { ...episode, ...updates };
-          });
-          return didUpdate ? { ...season, episodes } : season;
-        })
-      );
-    },
-    []
-  );
-
-  const playEpisode = useCallback(
-    (
-      episode: Episode,
-      options?: { mode?: PlaybackLaunchMode; startTime?: number }
-    ) => {
-      if (!episode.filePath) {
-        setNotice({ tone: "error", message: "File path missing for this episode." });
-        return;
-      }
-      setPlaybackMode(options?.mode ?? "continue");
-      setPlayerStartTime(
-        options?.startTime ?? (episode.watched ? 0 : episode.watchProgressSeconds ?? 0)
-      );
-      setActiveEpisodeId(episode.id);
-      setNotice(null);
-    },
-    []
-  );
-
-  const startEpisodePlayback = useCallback(
-    async (episode: Episode, mode: PlaybackLaunchMode) => {
-      if (mode === "random") {
-        setRandomAction("mark_started");
-        try {
-          await requestRandomSessionAction({
-            action: "mark_started",
-            episodeId: episode.id,
-          });
-        } catch (error) {
-          setNotice({
-            tone: "error",
-            message:
-              error instanceof Error
-                ? error.message
-                : "Failed to update random session.",
-          });
-          return;
-        } finally {
-          setRandomAction((current) =>
-            current === "mark_started" ? null : current
-          );
-        }
-      }
-      playEpisode(episode, { mode });
-    },
-    [playEpisode, requestRandomSessionAction]
-  );
-
-  const handlePlay = useCallback(
-    (episode: Episode) => {
-      void startEpisodePlayback(episode, "continue");
-    },
-    [startEpisodePlayback]
-  );
-
-  const handleClosePlayer = useCallback(() => {
-    setPlayerStartTime(0);
-    setActiveEpisodeId(null);
-    setPlaybackMode("continue");
-  }, []);
-
-  const handlePlayPreviousEpisode = useCallback(() => {
-    if (previousEpisodeItem) {
-      void startEpisodePlayback(previousEpisodeItem.episode, playbackMode);
-    }
-  }, [playbackMode, previousEpisodeItem, startEpisodePlayback]);
-
-  const handlePlayNextEpisode = useCallback(() => {
-    if (nextEpisodeItem) {
-      void startEpisodePlayback(nextEpisodeItem.episode, playbackMode);
-    }
-  }, [nextEpisodeItem, playbackMode, startEpisodePlayback]);
-
-  const handleSelectEpisode = useCallback(
-    (episodeId: string) => {
-      const selectedEpisode = orderedEpisodes.find(
-        ({ episode }) => episode.id === episodeId
-      )?.episode;
-      if (selectedEpisode) {
-        void startEpisodePlayback(selectedEpisode, playbackMode);
-      }
-    },
-    [orderedEpisodes, playbackMode, startEpisodePlayback]
-  );
-
-  const handleRandomSessionAction = useCallback(
-    async (action: "start_new" | "continue" | "next_random") => {
-      setRandomAction(action);
-      setNotice(null);
-      try {
-        const data = await requestRandomSessionAction({ action });
-        if (data.exhausted || !data.episode) {
-          setNotice({
-            tone: "info",
-            message:
-              action === "start_new"
-                ? "This series has no remaining episodes for a random session."
-                : "This random session is complete. Start a new one to keep going.",
-          });
-          if (action === "next_random") {
-            handleClosePlayer();
-          }
-          return;
-        }
-
-        playEpisode(data.episode, { mode: "random" });
-      } catch (error) {
-        setNotice({
-          tone: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Failed to update random session.",
-        });
-      } finally {
-        setRandomAction((current) => (current === action ? null : current));
-      }
-    },
-    [handleClosePlayer, playEpisode, requestRandomSessionAction]
-  );
-
-  const handlePlayRandom = useCallback(
-    (action: "start_new" | "continue") => {
-      void handleRandomSessionAction(action);
-    },
-    [handleRandomSessionAction]
-  );
-
-  const handlePlayExternal = useCallback(async (episode: Episode) => {
-    if (!episode.filePath) {
-      setNotice({ tone: "error", message: "File path missing for this episode." });
-      return;
-    }
-    setPlaying(episode.id);
-    setNotice(null);
-    try {
-      const response = await fetch("/api/play", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filePath: episode.filePath }),
-      });
-      const data = (await response.json()) as { error?: string };
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to launch player.");
-      }
-      setNotice({
-        tone: "success",
-        message: `Playing ${episode.titleClean || episode.titleRaw} in external player.`,
-      });
-    } catch (error) {
-      setNotice({
-        tone: "error",
-        message:
-          error instanceof Error ? error.message : "Failed to launch player.",
-      });
-    } finally {
-      setPlaying(null);
-    }
-  }, []);
-
-  const handleToggleEpisodeWatched = useCallback(
-    async (episode: Episode, checked: boolean) => {
-      setTogglingWatched((prev) => new Set(prev).add(episode.id));
-      try {
-        const response = await fetch(`/api/episodes/${episode.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ watched: checked }),
-        });
-        const data = (await response.json()) as EpisodeResponse;
-        if (!response.ok || !data.episode) {
-          throw new Error(data.error || "Failed to update episode.");
-        }
-        updateEpisodeInState(episode.id, { watched: data.episode.watched });
-      } catch (error) {
-        setNotice({
-          tone: "error",
-          message:
-            error instanceof Error ? error.message : "Failed to update episode.",
-        });
-      } finally {
-        setTogglingWatched((prev) => {
-          const next = new Set(prev);
-          next.delete(episode.id);
-          return next;
-        });
-      }
-    },
-    [updateEpisodeInState]
-  );
-
-  const handleEpisodeTimeUpdate = useCallback(
-    (episodeId: string, currentTime: number, duration: number) => {
-      const roundedTime = Math.round(currentTime);
-      const isWatched = duration > 0 && currentTime / duration >= 0.9;
-      updateEpisodeInState(episodeId, {
-        watchProgressSeconds: roundedTime,
-        ...(isWatched ? { watched: true } : {}),
-      });
-      fetch(`/api/episodes/${episodeId}/watch-progress`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentTime, duration }),
-      }).catch(() => {});
-    },
-    [updateEpisodeInState]
-  );
-
-  const handleEpisodeEnded = useCallback(
-    (episodeId: string, currentTime: number, duration: number) => {
-      const completedTime = duration > 0 ? duration : currentTime;
-      updateEpisodeInState(episodeId, {
-        watchProgressSeconds: Math.round(completedTime),
-        watched: true,
-      });
-      fetch(`/api/episodes/${episodeId}/watch-progress`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentTime: completedTime, duration: completedTime }),
-      }).catch(() => {});
-      if (playbackMode === "random") {
-        void handleRandomSessionAction("next_random");
-        return;
-      }
-      if (nextEpisodeItem) {
-        void startEpisodePlayback(nextEpisodeItem.episode, "continue");
-      }
-    },
-    [
-      handleRandomSessionAction,
-      nextEpisodeItem,
-      playbackMode,
-      startEpisodePlayback,
-      updateEpisodeInState,
-    ]
-  );
-
-  const handleSave = useCallback(async () => {
-    if (!series) return;
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle) {
-      setNotice({ tone: "error", message: "Title cannot be empty." });
-      return;
-    }
-
-    const trimmedPoster = posterInput.trim();
-    const nextPoster = trimmedPoster.length === 0 ? null : trimmedPoster;
-
-    const updates: { titleClean?: string; posterPath?: string | null } = {};
-    if (trimmedTitle !== series.titleClean) {
-      updates.titleClean = trimmedTitle;
-    }
-    if (nextPoster !== (series.posterPath ?? null)) {
-      updates.posterPath = nextPoster;
-    }
-
-    if (Object.keys(updates).length === 0) {
-      setNotice({ tone: "info", message: "No changes to save." });
-      return;
-    }
-
-    setSaving(true);
-    setNotice(null);
-    try {
-      const response = await fetch(`/api/series/${series.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates),
-      });
-      const data = (await response.json()) as SeriesResponse;
-      if (!response.ok || !data.series) {
-        throw new Error(data.error || "Failed to update series.");
-      }
-      setSeries(data.series);
-      setSeasons(data.seasons ?? data.series.seasons ?? []);
-      setTitle(data.series.titleClean);
-      setPosterInput(data.series.posterPath ?? "");
-      setNotice({ tone: "success", message: "Series updated." });
-    } catch (error) {
-      setNotice({
-        tone: "error",
-        message:
-          error instanceof Error ? error.message : "Failed to update series.",
-      });
-    } finally {
-      setSaving(false);
-    }
-  }, [posterInput, series, title]);
-
-  const handleRefreshPoster = useCallback(async () => {
-    if (!series) return;
-    setRefreshing(true);
-    setNotice(null);
-    try {
-      const response = await fetch(
-        `/api/series/${series.id}/refresh-poster`,
-        { method: "POST" }
-      );
-      const data = (await response.json()) as { series?: Series; error?: string };
-      if (!response.ok || !data.series) {
-        throw new Error(data.error || "Failed to refresh metadata.");
-      }
-      setSeries((prev) =>
-        prev ? { ...prev, posterPath: data.series?.posterPath ?? null } : prev
-      );
-      setPosterInput(data.series.posterPath ?? "");
-      setNotice({ tone: "success", message: "Metadata refreshed from OMDb." });
-    } catch (error) {
-      setNotice({
-        tone: "error",
-        message:
-          error instanceof Error ? error.message : "Failed to refresh metadata.",
-      });
-    } finally {
-      setRefreshing(false);
-    }
-  }, [series]);
-
-  const handleDelete = useCallback(async () => {
-    if (!series) return;
-    if (
-      !confirm(
-        "Remove this series from your library? Files on disk will not be deleted."
-      )
-    ) {
-      return;
-    }
-    setDeleting(true);
-    setNotice(null);
-    try {
-      const response = await fetch(`/api/series/${series.id}`, {
-        method: "DELETE",
-      });
-      if (!response.ok) {
-        const data = (await response.json()) as { error?: string };
-        throw new Error(data.error || "Failed to remove series.");
-      }
-      router.push("/");
-    } catch (error) {
-      setNotice({
-        tone: "error",
-        message:
-          error instanceof Error ? error.message : "Failed to remove series.",
-      });
-      setDeleting(false);
-    }
-  }, [router, series]);
-
-  const continueEpisode = useMemo(() => {
-    const firstUnwatched = orderedEpisodes.find(({ episode }) => !episode.watched);
-    return (firstUnwatched ?? orderedEpisodes[0])?.episode ?? null;
-  }, [orderedEpisodes]);
-
-  const allWatched = useMemo(
-    () => orderedEpisodes.length > 0 && orderedEpisodes.every(({ episode }) => episode.watched),
-    [orderedEpisodes]
-  );
-
-  const handlePlayContinue = useCallback(() => {
-    if (continueEpisode) {
-      void startEpisodePlayback(continueEpisode, "continue");
-    }
-  }, [continueEpisode, startEpisodePlayback]);
-
-  const seasonSummary = useMemo(() => {
-    if (!series) return "";
-    return `${series.seasonCount} ${series.seasonCount === 1 ? "season" : "seasons"}`;
-  }, [series]);
-
-  const seriesRating = useMemo(() => {
-    if (seasons.length === 0) return null;
-    const ratings = seasons
-      .map((season) => season.tmdbRating)
-      .filter((value): value is number => typeof value === "number");
-    if (ratings.length === 0) return null;
-    return Math.max(...ratings);
-  }, [seasons]);
-
-  const castCrew = useMemo(() => {
-    const unique = (names: string[]) => {
-      const seen = new Map<string, string>();
-      names.forEach((name) => {
-        const trimmed = name.trim();
-        if (!trimmed) return;
-        const key = trimmed.toLowerCase();
-        if (seen.has(key)) return;
-        seen.set(key, trimmed);
-      });
-      return Array.from(seen.values());
-    };
-
-    return {
-      directors: unique(seasons.flatMap((season) => season.directors ?? [])),
-      writers: unique(seasons.flatMap((season) => season.writers ?? [])),
-      actors: unique(seasons.flatMap((season) => season.actors ?? [])),
-    };
-  }, [seasons]);
-
-  const posterPreview = posterInput.trim().length > 0 ? posterInput.trim() : series?.posterPath ?? null;
-  const posterUrl = tmdbImageUrl(posterPreview, "w780");
-  const hasMissingBasicInfo = series && (!seriesRating || !series.seasons?.[0]?.year);
 
   return (
     <div className="min-h-screen pb-20">
-      {!loading && series ? (
-        <div className="relative w-full h-[50vh] sm:h-[60vh] flex items-end pb-12">
-          {/* Background Image */}
-          {series.seasons[0]?.backdropPath ? (
-            <div className="absolute inset-0 z-0">
-              <Image
-                src={tmdbImageUrl(series.seasons[0]?.backdropPath, "original") || ""}
-                alt={series.titleClean}
-                fill
-                priority
-                className="object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
-              <div className="absolute inset-0 bg-gradient-to-r from-background via-background/40 to-transparent" />
-            </div>
-          ) : (
-            <div className="absolute inset-0 z-0 bg-surface-strong">
-              <div className="absolute inset-0 bg-gradient-to-t from-background to-transparent" />
-            </div>
-          )}
-
-          <div className="relative z-10 w-full px-6 lg:px-12 max-w-7xl mx-auto flex flex-col gap-4">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors w-fit mb-4"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back to library
-            </Link>
-            
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white drop-shadow-lg">
-              {series.titleClean}
-            </h1>
-            
-            <div className="flex flex-wrap items-center gap-3 text-sm sm:text-base text-white/80 font-medium drop-shadow-md">
-              {series.seasons[0]?.year && <span>{series.seasons[0].year}</span>}
-              <span>•</span>
-              <span>{seasonSummary}</span>
-              {series.seasons[0]?.genres && series.seasons[0].genres.length > 0 && (
-                <>
-                  <span>•</span>
-                  <span>{series.seasons[0].genres.slice(0, 3).join(", ")}</span>
-                </>
-              )}
-              {seriesRating && (
-                <>
-                  <span>•</span>
-                  <span className="flex items-center gap-1">
-                    ★ {formatRating(seriesRating)}
-                  </span>
-                </>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3 mt-4">
-              {continueEpisode && (
-                <button
-                  onClick={handlePlayContinue}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-white text-black font-semibold hover:bg-white/90 transition-colors shadow-lg"
-                >
-                  <Play className="h-4 w-4 fill-current" />
-                  {allWatched ? "Watch Again" : "Continue"}
-                </button>
-              )}
-
-              {orderedEpisodes.length > 0 ? (
-                randomSessionLoading && !randomSession ? (
-                  <button
-                    disabled
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-surface-strong/80 backdrop-blur-sm text-white font-semibold border border-white/10 opacity-60"
-                  >
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Random
-                  </button>
-                ) : randomSession ? (
-                  <>
-                    <button
-                      onClick={() => handlePlayRandom("continue")}
-                      disabled={randomAction !== null}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-accent text-background font-semibold hover:bg-accent-hover transition-colors shadow-lg disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <Shuffle className="h-4 w-4" />
-                      {randomAction === "continue"
-                        ? "Continuing..."
-                        : "Continue Random"}
-                    </button>
-                    <button
-                      onClick={() => handlePlayRandom("start_new")}
-                      disabled={randomAction !== null}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-surface-strong/80 backdrop-blur-sm text-white font-semibold hover:bg-surface-strong transition-colors border border-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <Shuffle className="h-4 w-4" />
-                      {randomAction === "start_new"
-                        ? "Starting..."
-                        : "Start New Random"}
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => handlePlayRandom("start_new")}
-                    disabled={randomAction !== null}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-accent text-background font-semibold hover:bg-accent-hover transition-colors shadow-lg disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <Shuffle className="h-4 w-4" />
-                    {randomAction === "start_new" ? "Starting..." : "Random"}
-                  </button>
-                )
-              ) : null}
-
-              <div className="flex-1" />
-              
-              <button
-                onClick={() => setIsEditModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-surface-strong/80 backdrop-blur-sm text-white font-semibold hover:bg-surface-strong transition-colors border border-white/10"
-              >
-                <Edit3 className="h-4 w-4" /> Edit
-              </button>
-              
-              <button
-                onClick={() => setIsInfoModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-surface-strong/80 backdrop-blur-sm text-white font-semibold hover:bg-surface-strong transition-colors border border-white/10"
-              >
-                <Info className="h-4 w-4" /> Info
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <header className="border-b border-border bg-background/80 backdrop-blur-xl">
-          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-4 px-6 py-5 2xl:max-w-screen-2xl">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back to library
-            </Link>
-          </div>
-        </header>
-      )}
+      <SeriesDetailHero
+        series={data.series}
+        loading={data.loading}
+        seasonSummary={seasonSummary}
+        seriesRating={seriesRating}
+        continueEpisode={playback.continueEpisode}
+        allWatched={playback.allWatched}
+        hasEpisodes={playback.orderedEpisodes.length > 0}
+        randomSession={data.randomSession}
+        randomSessionLoading={data.randomSessionLoading}
+        randomAction={playback.randomAction}
+        onPlayContinue={playback.handlePlayContinue}
+        onPlayRandom={playback.handlePlayRandom}
+        onOpenEdit={edit.openEditModal}
+        onOpenInfo={edit.openInfoModal}
+      />
 
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8 2xl:max-w-screen-2xl">
         {notice ? <StatusBanner tone={notice.tone} message={notice.message} /> : null}
 
-        {activeEpisode ? (
+        {playback.activeEpisode ? (
           <VideoPlayer
-            title={getEpisodePlayerTitle(activeEpisode)}
-            streamUrl={`/api/episodes/${activeEpisode.id}/stream`}
-            hlsUrl={`/api/episodes/${activeEpisode.id}/hls/master.m3u8`}
-            thumbnailsVttUrl={`/api/episodes/${activeEpisode.id}/storyboard/vtt`}
-            startTime={playerStartTime}
-            onClose={handleClosePlayer}
-            onError={(msg) => setNotice({ tone: "error", message: msg })}
+            title={getEpisodePlayerTitle(playback.activeEpisode)}
+            streamUrl={`/api/episodes/${playback.activeEpisode.id}/stream`}
+            hlsUrl={`/api/episodes/${playback.activeEpisode.id}/hls/master.m3u8`}
+            thumbnailsVttUrl={`/api/episodes/${playback.activeEpisode.id}/storyboard/vtt`}
+            startTime={playback.playerStartTime}
+            onClose={playback.handleClosePlayer}
+            onError={(message) => setNotice({ tone: "error", message })}
             onTimeUpdate={(currentTime, duration) =>
-              handleEpisodeTimeUpdate(activeEpisode.id, currentTime, duration)
+              playback.handleEpisodeTimeUpdate(
+                playback.activeEpisode!.id,
+                currentTime,
+                duration
+              )
             }
             onEnded={(currentTime, duration) =>
-              handleEpisodeEnded(activeEpisode.id, currentTime, duration)
+              playback.handleEpisodeEnded(
+                playback.activeEpisode!.id,
+                currentTime,
+                duration
+              )
             }
-            onExternalPlayer={() => handlePlayExternal(activeEpisode)}
-            onPreviousEpisode={previousEpisodeItem ? handlePlayPreviousEpisode : undefined}
-            previousEpisode={previousEpisodeItem?.target}
-            onNextEpisode={nextEpisodeItem ? handlePlayNextEpisode : undefined}
-            nextEpisode={nextEpisodeItem?.target}
-            episodeSeasons={episodeSelectorSeasons}
-            onSelectEpisode={handleSelectEpisode}
+            onExternalPlayer={() =>
+              playback.handlePlayExternal(playback.activeEpisode!)
+            }
+            onPreviousEpisode={
+              playback.previousEpisodeItem
+                ? playback.handlePlayPreviousEpisode
+                : undefined
+            }
+            previousEpisode={playback.previousEpisodeItem?.target}
+            onNextEpisode={
+              playback.nextEpisodeItem ? playback.handlePlayNextEpisode : undefined
+            }
+            nextEpisode={playback.nextEpisodeItem?.target}
+            episodeSeasons={playback.episodeSelectorSeasons}
+            onSelectEpisode={playback.handleSelectEpisode}
             mediaType="episode"
-            mediaId={activeEpisode.id}
-            initialSubtitleId={activeEpisode.selectedSubtitleId ?? null}
-            initialSubtitlesEnabled={activeEpisode.subtitlesEnabled ?? false}
-            isRandomMode={playbackMode === "random"}
+            mediaId={playback.activeEpisode.id}
+            initialSubtitleId={playback.activeEpisode.selectedSubtitleId ?? null}
+            initialSubtitlesEnabled={
+              playback.activeEpisode.subtitlesEnabled ?? false
+            }
+            isRandomMode={playback.playbackMode === "random"}
             onRandomEpisode={
-              playbackMode === "random" && randomAction === null
-                ? () => void handleRandomSessionAction("next_random")
+              playback.playbackMode === "random" && playback.randomAction === null
+                ? () => void playback.handleRandomSessionAction("next_random")
                 : undefined
             }
           />
         ) : null}
 
-        {loading ? (
+        {data.loading ? (
           <div className="flex items-center justify-center gap-3 rounded-2xl border border-border bg-surface p-10 text-sm text-muted 2xl:text-base">
             <Loader2 className="h-5 w-5 animate-spin text-accent" />
             Loading series...
           </div>
         ) : null}
 
-        {!loading && !series ? (
+        {!data.loading && !data.series ? (
           <div className="flex flex-col items-center gap-4 rounded-2xl border border-border bg-surface p-12 text-center 2xl:p-16">
             <p className="font-serif text-lg font-medium text-foreground 2xl:text-xl">
               Series not found
@@ -958,311 +164,56 @@ export default function SeriesDetailPage() {
           </div>
         ) : null}
 
-        {!loading && series ? (
+        {!data.loading && data.series ? (
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
-            <div className="flex flex-col gap-4">
-              <div className="relative aspect-[2/3] w-full overflow-hidden rounded-2xl border border-border bg-surface shadow-lg">
-                {posterUrl ? (
-                  <Image
-                    src={posterUrl}
-                    alt={series.titleClean}
-                    fill
-                    sizes="(max-width: 1024px) 80vw, 40vw"
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-faint">
-                    <Video className="h-10 w-10" />
-                    <span className="text-xs uppercase tracking-[0.2em]">
-                      No Poster
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {hasMissingBasicInfo && (
-                <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 flex flex-col gap-3">
-                  <p className="text-sm text-amber-500 font-medium">Missing info</p>
-                  <p className="text-xs text-amber-500/80">Some details like year or rating are missing. Fetch from OMDb to update.</p>
-                  <button
-                    onClick={handleRefreshPoster}
-                    disabled={refreshing}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-500 transition-colors hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-                    {refreshing ? "Fetching..." : "Fetch from OMDb"}
-                  </button>
-                </div>
-              )}
-              
-              {(castCrew.directors.length > 0 || castCrew.writers.length > 0 || castCrew.actors.length > 0) && (
-                <div className="rounded-2xl border border-border bg-surface p-6 text-sm text-muted">
-                  <p className="font-serif text-lg font-medium text-foreground">
-                    Cast & Crew
-                  </p>
-                  <div className="mt-4 space-y-4">
-                    {castCrew.directors.length > 0 ? (
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.2em] text-faint mb-1">Director</p>
-                        <p className="text-foreground">{castCrew.directors.join(", ")}</p>
-                      </div>
-                    ) : null}
-                    {castCrew.writers.length > 0 ? (
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.2em] text-faint mb-1">Writer</p>
-                        <p className="text-foreground">{castCrew.writers.join(", ")}</p>
-                      </div>
-                    ) : null}
-                    {castCrew.actors.length > 0 ? (
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.2em] text-faint mb-1">Cast</p>
-                        <p className="text-foreground">{castCrew.actors.join(", ")}</p>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-4">
-              {seasons.map((season) => {
-                const seasonLabel = season.seasonNumber
-                  ? `Season ${season.seasonNumber}`
-                  : "Season";
-                const episodeCount = season.episodeCount ?? season.episodes.length;
-                return (
-                  <details
-                    key={season.id}
-                    className="group rounded-2xl border border-border bg-surface overflow-hidden"
-                  >
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 hover:bg-surface-strong/30 transition-colors">
-                      <div className="min-w-0">
-                        <p className="font-serif text-lg font-semibold text-foreground">
-                          {seasonLabel}
-                        </p>
-                        <p className="text-xs text-muted 2xl:text-sm">
-                          {season.titleClean}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted 2xl:text-sm">
-                        <span>{episodeCount} ep</span>
-                        <span>{formatRating(season.tmdbRating)}</span>
-                        <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
-                      </div>
-                    </summary>
-
-                    <div className="border-t border-border bg-background/30">
-                      {season.episodes.length === 0 ? (
-                        <p className="p-5 text-sm text-muted">
-                          No episodes found for this season.
-                        </p>
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm text-muted">
-                            <thead className="bg-surface-strong/50 text-xs uppercase tracking-[0.2em] text-faint">
-                              <tr>
-                                <th className="w-12 px-4 py-3 text-center">
-                                  <Check className="mx-auto h-3.5 w-3.5" />
-                                </th>
-                                <th className="px-4 py-3 text-left">Episode</th>
-                                <th className="px-4 py-3 text-left">Title</th>
-                                <th className="px-4 py-3 text-right">Play</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border/50">
-                              {season.episodes.map((episode) => (
-                                <tr
-                                  key={episode.id}
-                                  className="hover:bg-surface-strong/30 transition-colors"
-                                >
-                                  <td className="w-12 px-4 py-3 text-center">
-                                    <input
-                                      type="checkbox"
-                                      checked={episode.watched}
-                                      onChange={(e) =>
-                                        handleToggleEpisodeWatched(
-                                          episode,
-                                          e.target.checked
-                                        )
-                                      }
-                                      disabled={togglingWatched.has(episode.id)}
-                                      className="h-4 w-4 cursor-pointer rounded border-border bg-background text-accent focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-50"
-                                    />
-                                  </td>
-                                  <td className="px-4 py-3 text-foreground whitespace-nowrap">
-                                    {episode.episodeNumber ?? "—"}
-                                  </td>
-                                   <td className={`px-4 py-3 ${episode.watched ? "text-muted line-through" : "text-foreground"}`}>
-                                     {getEpisodeDisplayTitle(episode)}
-                                   </td>
-                                  <td className="px-4 py-3 text-right whitespace-nowrap">
-                                    <div className="inline-flex items-center gap-1">
-                                      <button
-                                        onClick={() => handlePlay(episode)}
-                                        className="inline-flex items-center gap-2 rounded-lg bg-accent/10 text-accent px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-accent hover:text-background disabled:cursor-not-allowed disabled:opacity-50"
-                                      >
-                                        <Play className="h-3.5 w-3.5" />
-                                        Play
-                                      </button>
-                                      <button
-                                        onClick={() => handlePlayExternal(episode)}
-                                        disabled={playing === episode.id}
-                                        className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1.5 text-xs text-muted transition-colors hover:border-border-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                                        title="Play in external player"
-                                      >
-                                        <Monitor className="h-3 w-3" />
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  </details>
-                );
-              })}
-            </div>
+            <SeriesDetailSidebar
+              series={data.series}
+              posterUrl={posterUrl}
+              hasMissingBasicInfo={hasMissingBasicInfo}
+              refreshing={edit.refreshing}
+              castCrew={castCrew}
+              onRefreshPoster={edit.handleRefreshPoster}
+            />
+            <SeriesEpisodesSection
+              seasons={data.seasons}
+              togglingWatched={data.togglingWatched}
+              playingEpisodeId={playback.playingEpisodeId}
+              onToggleEpisodeWatched={data.handleToggleEpisodeWatched}
+              onPlayEpisode={playback.handlePlay}
+              onPlayExternal={playback.handlePlayExternal}
+            />
           </div>
         ) : null}
       </main>
 
-      {/* Edit Modal */}
-      {series && (
-        <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Edit Series">
-          <div className="flex flex-col gap-8">
-            <div className="flex flex-col gap-4">
-              <label className="flex flex-col gap-2 text-sm text-muted">
-                <span className="text-xs uppercase tracking-[0.2em] text-faint">
-                  Display title
-                </span>
-                <input
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  className="rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60"
-                  placeholder="Series title"
-                />
-              </label>
+      <SeriesEditModal
+        series={data.series}
+        isOpen={edit.isEditModalOpen}
+        title={edit.title}
+        posterInput={edit.posterInput}
+        folderImages={edit.folderImages}
+        folderImagesLoading={edit.folderImagesLoading}
+        folderImagesError={edit.folderImagesError}
+        selectedFolderImage={edit.selectedFolderImage}
+        saving={edit.saving}
+        refreshing={edit.refreshing}
+        deleting={edit.deleting}
+        onClose={edit.closeEditModal}
+        onTitleChange={edit.setTitle}
+        onPosterInputChange={edit.setPosterInput}
+        onSelectedFolderImageChange={edit.setSelectedFolderImage}
+        onUseSelectedFolderImage={edit.useSelectedFolderImage}
+        onSave={edit.handleSave}
+        onRefreshPoster={edit.handleRefreshPoster}
+        onClearPoster={edit.clearPoster}
+        onDelete={edit.handleDelete}
+      />
 
-              <label className="flex flex-col gap-2 text-sm text-muted">
-                <span className="text-xs uppercase tracking-[0.2em] text-faint">
-                  Poster URL
-                </span>
-                <input
-                  value={posterInput}
-                  onChange={(event) => setPosterInput(event.target.value)}
-                  className="rounded-lg border border-border bg-background px-4 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60"
-                  placeholder="https://..."
-                />
-              </label>
-
-              {folderImagesError ? (
-                <div className="rounded-lg border border-border bg-background/40 px-4 py-3 text-xs text-muted">
-                  {folderImagesError}
-                </div>
-              ) : folderImagesLoading ? (
-                <div className="rounded-lg border border-border bg-background/40 px-4 py-3 text-xs text-muted">
-                  Scanning folder for images...
-                </div>
-              ) : folderImages.length > 0 ? (
-                <div className="rounded-lg border border-border bg-background/40 p-4">
-                  <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-faint">
-                    <ImageIcon className="h-3.5 w-3.5" />
-                    Poster from folder
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
-                    <select
-                      value={selectedFolderImage}
-                      onChange={(event) => setSelectedFolderImage(event.target.value)}
-                      className="min-w-[220px] flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-accent/60"
-                    >
-                      {folderImages.map((image) => (
-                        <option key={image.url} value={image.url}>
-                          {image.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => setPosterInput(selectedFolderImage)}
-                      disabled={!selectedFolderImage}
-                      className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Use selected
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="flex flex-wrap items-center gap-3 mt-2">
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Save className="h-4 w-4" />
-                  {saving ? "Saving..." : "Save changes"}
-                </button>
-                <button
-                  onClick={handleRefreshPoster}
-                  disabled={refreshing}
-                  className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-                  {refreshing ? "Fetching..." : "Fetch from OMDb"}
-                </button>
-                <button
-                  onClick={() => setPosterInput("")}
-                  className="rounded-lg border border-border px-4 py-2 text-sm text-muted transition-colors hover:border-border-hover hover:text-foreground"
-                >
-                  Clear poster
-                </button>
-              </div>
-            </div>
-
-            <div className="h-px w-full bg-border" />
-
-            <div className="flex flex-col gap-4">
-              <p className="font-serif text-lg font-medium text-foreground">Options</p>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/50 bg-transparent px-4 py-2 text-sm text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-50"
-              >
-                <Trash2 className="h-4 w-4" />
-                {deleting ? "Removing..." : "Remove from library"}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* Info Modal */}
-      {series && (
-        <Modal isOpen={isInfoModalOpen} onClose={() => setIsInfoModalOpen(false)} title="Database Details">
-          <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 text-sm">
-            <div className="rounded-xl border border-border bg-background/40 p-3">
-              <dt className="text-xs uppercase tracking-[0.2em] text-faint">id</dt>
-              <dd className="mt-1 break-all text-foreground">{series.id}</dd>
-            </div>
-            <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
-              <dt className="text-xs uppercase tracking-[0.2em] text-faint">titleClean</dt>
-              <dd className="mt-1 break-words text-foreground">{series.titleClean}</dd>
-            </div>
-            <div className="rounded-xl border border-border bg-background/40 p-3">
-              <dt className="text-xs uppercase tracking-[0.2em] text-faint">seasonCount</dt>
-              <dd className="mt-1 text-foreground">{series.seasonCount}</dd>
-            </div>
-            <div className="rounded-xl border border-border bg-background/40 p-3 sm:col-span-2">
-              <dt className="text-xs uppercase tracking-[0.2em] text-faint">posterPath</dt>
-              <dd className="mt-1 break-all text-foreground">{series.posterPath ?? "—"}</dd>
-            </div>
-          </dl>
-        </Modal>
-      )}
+      <SeriesInfoModal
+        series={data.series}
+        isOpen={edit.isInfoModalOpen}
+        onClose={edit.closeInfoModal}
+      />
     </div>
   );
 }
