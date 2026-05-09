@@ -22,6 +22,7 @@ import {
   Download,
   Trash2,
   AlertCircle,
+  MoreHorizontal,
   PictureInPicture2,
 } from "lucide-react";
 import type { SubtitleFile, SubtitleSearchResult } from "@/lib/types";
@@ -233,6 +234,8 @@ export function VideoPlayer({
   const currentEpisodeRef = useRef<HTMLButtonElement>(null);
   const ccButtonRef = useRef<HTMLButtonElement>(null);
   const ccPanelRef = useRef<HTMLDivElement>(null);
+  const overflowMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const overflowMenuPanelRef = useRef<HTMLDivElement>(null);
   const lastReportedTime = useRef(0);
   const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didSeekToStart = useRef(false);
@@ -250,6 +253,7 @@ export function VideoPlayer({
   const [isDragging, setIsDragging] = useState(false);
   const [isEpisodeSelectorOpen, setIsEpisodeSelectorOpen] = useState(false);
   const [openEpisodeSeasonId, setOpenEpisodeSeasonId] = useState<string | null>(null);
+  const [isOverflowMenuOpen, setIsOverflowMenuOpen] = useState(false);
 
   // Subtitle state
   const [subtitles, setSubtitles] = useState<SubtitleFile[]>([]);
@@ -383,13 +387,13 @@ export function VideoPlayer({
   const resetHideTimer = useCallback(() => {
     setShowControls(true);
     if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
-    if (isEpisodeSelectorOpen || isCcPanelOpen) return;
+    if (isEpisodeSelectorOpen || isCcPanelOpen || isOverflowMenuOpen) return;
     hideControlsTimer.current = setTimeout(() => {
       if (videoRef.current && !videoRef.current.paused) {
         setShowControls(false);
       }
     }, 3000);
-  }, [isEpisodeSelectorOpen, isCcPanelOpen]);
+  }, [isEpisodeSelectorOpen, isCcPanelOpen, isOverflowMenuOpen]);
 
   useEffect(() => {
     return () => {
@@ -436,6 +440,21 @@ export function VideoPlayer({
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [isCcPanelOpen]);
+
+  useEffect(() => {
+    if (!isOverflowMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (overflowMenuPanelRef.current?.contains(target)) return;
+      if (overflowMenuButtonRef.current?.contains(target)) return;
+      setIsOverflowMenuOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [isOverflowMenuOpen]);
 
   // Load and reconcile subtitle list when mediaId changes
   useEffect(() => {
@@ -1666,29 +1685,29 @@ export function VideoPlayer({
         </div>
 
         {/* Controls row */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <button
             onClick={togglePlay}
-            className="rounded-lg p-1.5 text-white hover:bg-white/10 transition-colors"
+            className="rounded-lg p-1 sm:p-1.5 text-white hover:bg-white/10 transition-colors"
             title={isPlaying ? "Pause (K)" : "Play (K)"}
           >
             {isPlaying ? (
-              <Pause className="h-5 w-5" />
+              <Pause className="h-4 w-4 sm:h-5 sm:w-5" />
             ) : (
-              <Play className="h-5 w-5 fill-current" />
+              <Play className="h-4 w-4 sm:h-5 sm:w-5 fill-current" />
             )}
           </button>
 
           <button
             onClick={() => skip(-10)}
-            className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+            className="rounded-lg p-1 sm:p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
             title="Back 10s (←)"
           >
             <RotateCcw className="h-4 w-4" />
           </button>
           <button
             onClick={() => skip(10)}
-            className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+            className="rounded-lg p-1 sm:p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
             title="Forward 10s (→)"
           >
             <RotateCw className="h-4 w-4" />
@@ -1701,7 +1720,7 @@ export function VideoPlayer({
                 video.muted = !video.muted;
                 setIsMuted(video.muted);
               }}
-              className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+              className="rounded-lg p-1 sm:p-1.5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
               title="Mute (M)"
             >
               {isMuted || volume === 0 ? (
@@ -1710,127 +1729,258 @@ export function VideoPlayer({
                 <Volume2 className="h-4 w-4" />
               )}
             </button>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={isMuted ? 0 : volume}
-              onChange={handleVolumeChange}
-              className="w-0 group-hover/vol:w-20 transition-all duration-200 accent-accent cursor-pointer opacity-0 group-hover/vol:opacity-100"
-            />
+            {clientDevice !== "mobile" && (
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={isMuted ? 0 : volume}
+                onChange={handleVolumeChange}
+                className="w-0 group-hover/vol:w-20 transition-all duration-200 accent-accent cursor-pointer opacity-0 group-hover/vol:opacity-100"
+              />
+            )}
           </div>
 
-          <span className="text-xs text-white/70 tabular-nums ml-1">
+          <span className="text-xs text-white/70 tabular-nums ml-0.5 sm:ml-1">
             {formatTime(effectiveTime)} / {formatTime(effectiveDuration)}
           </span>
 
           <div className="flex-1" />
 
-          {streamInfo?.mode && streamInfo.mode !== "direct" && (
-            <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1">
-              {streamInfo?.mode === "remux" ? "remux" : "transcode"}
-            </span>
+          {/* Secondary controls — desktop only */}
+          {clientDevice !== "mobile" && (
+            <>
+              {streamInfo?.mode && streamInfo.mode !== "direct" && (
+                <span className="text-[10px] text-white/40 uppercase tracking-wider mr-1">
+                  {streamInfo?.mode === "remux" ? "remux" : "transcode"}
+                </span>
+              )}
+
+              <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-white/70">
+                Mode
+                <select
+                  value={playbackStrategy}
+                  onChange={handlePlaybackStrategyChange}
+                  className="rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] uppercase tracking-[0.08em] text-white outline-none"
+                  aria-label="Playback mode"
+                >
+                  <option value="auto">Auto</option>
+                  <option value="classic">Classic</option>
+                  <option value="hls">HLS</option>
+                </select>
+              </label>
+
+              <div className="ml-auto flex items-center gap-2">
+                {mediaId ? (
+                  <div className="relative">
+                    <button
+                      ref={ccButtonRef}
+                      onClick={toggleCcPanel}
+                      className={`relative rounded-xl border px-3 py-2 text-white/80 transition-colors ${
+                        isCcPanelOpen
+                          ? "border-accent/50 bg-accent/20 text-white"
+                          : "border-white/10 bg-white/5 hover:bg-white/10 hover:text-white"
+                      }`}
+                      aria-label="Subtitle options"
+                      title="Subtitles"
+                    >
+                      <Captions className="h-4 w-4" />
+                      {activeSubtitleId && subtitlesEnabled ? (
+                        <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-accent" />
+                      ) : null}
+                    </button>
+                  </div>
+                ) : null}
+                {canBrowseEpisodes ? (
+                  <div className="group relative">
+                    <button
+                      ref={episodeSelectorButtonRef}
+                      onClick={toggleEpisodeSelector}
+                      className={`peer rounded-xl border px-3 py-2 text-white/80 transition-colors ${
+                        isEpisodeSelectorOpen
+                          ? "border-accent/50 bg-accent/20 text-white"
+                          : "border-white/10 bg-white/5 hover:bg-white/10 hover:text-white"
+                      }`}
+                      aria-label="Browse episodes"
+                    >
+                      <ListVideo className="h-4 w-4" />
+                    </button>
+                    <PlayerHoverCard
+                      label="Episode selector"
+                      target={{
+                        id: "episodes",
+                        title: "Browse all seasons",
+                        subtitle: "Open the in-player episode list.",
+                      }}
+                    />
+                  </div>
+                ) : null}
+                <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
+                  <div className="group relative">
+                    <button
+                      onClick={onPreviousEpisode}
+                      disabled={!onPreviousEpisode}
+                      className="peer rounded-lg p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label={
+                        previousEpisode
+                          ? `Previous episode: ${previousEpisode.title}`
+                          : "No previous episode"
+                      }
+                    >
+                      <SkipBack className="h-4 w-4" />
+                    </button>
+                    <PlayerHoverCard label="Previous episode" target={previousEpisode} />
+                  </div>
+                  <div className="group relative">
+                    <button
+                      onClick={onNextEpisode}
+                      disabled={!onNextEpisode}
+                      className="peer rounded-lg p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label={
+                        nextEpisode ? `Next episode: ${nextEpisode.title}` : "No next episode"
+                      }
+                    >
+                      <SkipForward className="h-4 w-4" />
+                    </button>
+                    <PlayerHoverCard label="Next episode" target={nextEpisode} />
+                  </div>
+                </div>
+                <button
+                  onClick={onClose}
+                  className="rounded-xl border border-white/10 bg-white/5 p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  title="Exit player"
+                  aria-label="Exit player"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </>
           )}
 
-          <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-white/70">
-            Mode
-            <select
-              value={playbackStrategy}
-              onChange={handlePlaybackStrategyChange}
-              className="rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] uppercase tracking-[0.08em] text-white outline-none"
-              aria-label="Playback mode"
-            >
-              <option value="auto">Auto</option>
-              <option value="classic">Classic</option>
-              <option value="hls">HLS</option>
-            </select>
-          </label>
+          {/* Mobile overflow menu */}
+          {clientDevice === "mobile" && (
+            <div className="relative">
+              <button
+                ref={overflowMenuButtonRef}
+                onClick={() => setIsOverflowMenuOpen((v) => !v)}
+                className={`rounded-xl border p-1.5 text-white/80 transition-colors ${
+                  isOverflowMenuOpen
+                    ? "border-accent/50 bg-accent/20 text-white"
+                    : "border-white/10 bg-white/5 hover:bg-white/10 hover:text-white"
+                }`}
+                aria-label="More controls"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
 
-          <div className="ml-auto flex items-center gap-2">
-            {mediaId ? (
-              <div className="relative">
-                <button
-                  ref={ccButtonRef}
-                  onClick={toggleCcPanel}
-                  className={`relative rounded-xl border px-3 py-2 text-white/80 transition-colors ${
-                    isCcPanelOpen
-                      ? "border-accent/50 bg-accent/20 text-white"
-                      : "border-white/10 bg-white/5 hover:bg-white/10 hover:text-white"
-                  }`}
-                  aria-label="Subtitle options"
-                  title="Subtitles"
+              {isOverflowMenuOpen && (
+                <div
+                  ref={overflowMenuPanelRef}
+                  className="absolute bottom-full right-0 mb-2 min-w-[200px] rounded-2xl border border-white/10 bg-black/90 p-3 shadow-2xl backdrop-blur-xl"
                 >
-                  <Captions className="h-4 w-4" />
-                  {activeSubtitleId && subtitlesEnabled ? (
-                    <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-accent" />
+                  {/* Playback mode */}
+                  <div className="pb-2 mb-2 border-b border-white/10">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-white/40 mb-1.5">Playback Mode</p>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={playbackStrategy}
+                        onChange={handlePlaybackStrategyChange}
+                        className="w-full rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-[12px] text-white outline-none"
+                        aria-label="Playback mode"
+                      >
+                        <option value="auto">Auto</option>
+                        <option value="classic">Classic</option>
+                        <option value="hls">HLS</option>
+                      </select>
+                      {streamInfo?.mode && streamInfo.mode !== "direct" && (
+                        <span className="text-[10px] text-white/40 uppercase tracking-wider whitespace-nowrap">
+                          {streamInfo.mode === "remux" ? "remux" : "transcode"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Subtitles */}
+                  {mediaId ? (
+                    <button
+                      onClick={() => {
+                        toggleCcPanel();
+                        setIsOverflowMenuOpen(false);
+                      }}
+                      className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-sm transition-colors ${
+                        isCcPanelOpen
+                          ? "bg-accent/20 text-white"
+                          : "text-white/80 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      <Captions className="h-4 w-4 flex-shrink-0" />
+                      <span>Subtitles</span>
+                      {activeSubtitleId && subtitlesEnabled ? (
+                        <span className="ml-auto h-2 w-2 flex-shrink-0 rounded-full bg-accent" />
+                      ) : null}
+                    </button>
                   ) : null}
-                </button>
-              </div>
-            ) : null}
-            {canBrowseEpisodes ? (
-              <div className="group relative">
-                <button
-                  ref={episodeSelectorButtonRef}
-                  onClick={toggleEpisodeSelector}
-                  className={`peer rounded-xl border px-3 py-2 text-white/80 transition-colors ${
-                    isEpisodeSelectorOpen
-                      ? "border-accent/50 bg-accent/20 text-white"
-                      : "border-white/10 bg-white/5 hover:bg-white/10 hover:text-white"
-                  }`}
-                  aria-label="Browse episodes"
-                >
-                  <ListVideo className="h-4 w-4" />
-                </button>
-                <PlayerHoverCard
-                  label="Episode selector"
-                  target={{
-                    id: "episodes",
-                    title: "Browse all seasons",
-                    subtitle: "Open the in-player episode list.",
-                  }}
-                />
-              </div>
-            ) : null}
-            <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
-              <div className="group relative">
-                <button
-                  onClick={onPreviousEpisode}
-                  disabled={!onPreviousEpisode}
-                  className="peer rounded-lg p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label={
-                    previousEpisode
-                      ? `Previous episode: ${previousEpisode.title}`
-                      : "No previous episode"
-                  }
-                >
-                  <SkipBack className="h-4 w-4" />
-                </button>
-                <PlayerHoverCard label="Previous episode" target={previousEpisode} />
-              </div>
-              <div className="group relative">
-                <button
-                  onClick={onNextEpisode}
-                  disabled={!onNextEpisode}
-                  className="peer rounded-lg p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label={
-                    nextEpisode ? `Next episode: ${nextEpisode.title}` : "No next episode"
-                  }
-                >
-                  <SkipForward className="h-4 w-4" />
-                </button>
-                <PlayerHoverCard label="Next episode" target={nextEpisode} />
-              </div>
+
+                  {/* Episode selector */}
+                  {canBrowseEpisodes ? (
+                    <button
+                      onClick={() => {
+                        toggleEpisodeSelector();
+                        setIsOverflowMenuOpen(false);
+                      }}
+                      className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-sm transition-colors ${
+                        isEpisodeSelectorOpen
+                          ? "bg-accent/20 text-white"
+                          : "text-white/80 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      <ListVideo className="h-4 w-4 flex-shrink-0" />
+                      <span>Episodes</span>
+                    </button>
+                  ) : null}
+
+                  {/* Previous / Next episode */}
+                  <div className="mt-2 pt-2 border-t border-white/10 flex gap-2">
+                    <button
+                      onClick={onPreviousEpisode}
+                      disabled={!onPreviousEpisode}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-2 text-sm text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label={
+                        previousEpisode
+                          ? `Previous episode: ${previousEpisode.title}`
+                          : "No previous episode"
+                      }
+                    >
+                      <SkipBack className="h-4 w-4" />
+                      <span className="text-xs">Prev</span>
+                    </button>
+                    <button
+                      onClick={onNextEpisode}
+                      disabled={!onNextEpisode}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 px-2 text-sm text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label={
+                        nextEpisode ? `Next episode: ${nextEpisode.title}` : "No next episode"
+                      }
+                    >
+                      <span className="text-xs">Next</span>
+                      <SkipForward className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-            <button
-              onClick={onClose}
-              className="rounded-xl border border-white/10 bg-white/5 p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-              title="Exit player"
-              aria-label="Exit player"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+          )}
+
+          {/* Close — always visible */}
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-white/10 bg-white/5 p-1.5 sm:p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+            title="Exit player"
+            aria-label="Exit player"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </div>
