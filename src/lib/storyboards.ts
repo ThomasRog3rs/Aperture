@@ -1,11 +1,14 @@
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
-import path from "node:path";
 import { promisify } from "node:util";
+import {
+  getStoryboardImagePath,
+  getStoryboardVttPath,
+  getTranscodeDir,
+  isSafeMediaId,
+} from "@/lib/transcodePaths";
 
 const execFileAsync = promisify(execFile);
-
-const TRANSCODES_DIR = path.join(process.cwd(), "data", "transcodes");
 
 const THUMB_WIDTH = 160;
 const THUMB_HEIGHT = 90;
@@ -26,13 +29,13 @@ export async function generateStoryboard(
   mediaId: string,
   inputPath: string
 ): Promise<{ imagePath: string; vttPath: string }> {
-  const dir = path.join(TRANSCODES_DIR, mediaId);
+  const dir = getTranscodeDir(mediaId);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  const imagePath = path.join(dir, "storyboard.jpg");
-  const vttPath = path.join(dir, "storyboard.vtt");
+  const imagePath = getStoryboardImagePath(mediaId);
+  const vttPath = getStoryboardVttPath(mediaId);
 
   // Skip if both already exist
   if (fs.existsSync(imagePath) && fs.existsSync(vttPath)) {
@@ -160,10 +163,12 @@ async function getVideoDuration(filePath: string): Promise<number> {
  * Checks if storyboard assets already exist for a given media item.
  */
 export function hasStoryboard(mediaId: string): boolean {
-  const dir = path.join(TRANSCODES_DIR, mediaId);
+  if (!isSafeMediaId(mediaId)) return false;
+  const imagePath = getStoryboardImagePath(mediaId);
+  const vttPath = getStoryboardVttPath(mediaId);
   return (
-    fs.existsSync(path.join(dir, "storyboard.jpg")) &&
-    fs.existsSync(path.join(dir, "storyboard.vtt"))
+    fs.existsSync(imagePath) &&
+    fs.existsSync(vttPath)
   );
 }
 
@@ -173,9 +178,9 @@ export function hasStoryboard(mediaId: string): boolean {
 export function getStoryboardPaths(
   mediaId: string
 ): { imagePath: string; vttPath: string } | null {
-  const dir = path.join(TRANSCODES_DIR, mediaId);
-  const imagePath = path.join(dir, "storyboard.jpg");
-  const vttPath = path.join(dir, "storyboard.vtt");
+  if (!isSafeMediaId(mediaId)) return null;
+  const imagePath = getStoryboardImagePath(mediaId);
+  const vttPath = getStoryboardVttPath(mediaId);
   if (fs.existsSync(imagePath) && fs.existsSync(vttPath)) {
     return { imagePath, vttPath };
   }

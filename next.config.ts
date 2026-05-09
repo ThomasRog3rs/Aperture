@@ -3,6 +3,12 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
+  outputFileTracingExcludes: {
+    // Runtime-generated HLS/storyboard artifacts live under data/transcodes and
+    // are discovered from disk at request time, so they should not be traced
+    // into the build output.
+    "/*": ["data/transcodes/**"],
+  },
   images: {
     localPatterns: [
       // Allow Next/Image to render images served by our own API routes,
