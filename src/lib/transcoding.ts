@@ -144,6 +144,70 @@ export async function probeFile(filePath: string): Promise<ProbeResult> {
 
 /** What the stream endpoint should do with the file */
 export type PlaybackMode = "direct" | "remux" | "transcode";
+export type PlaybackStrategy = "auto" | "classic" | "hls";
+export type ClientDevice = "desktop" | "mobile";
+export type EffectivePlaybackMode = "direct" | "hls" | "live";
+
+export type ResolvedPlaybackStrategy = {
+  requestedStrategy: PlaybackStrategy;
+  effectiveStrategy: PlaybackStrategy;
+  effectiveMode: EffectivePlaybackMode;
+  fallbackReason?: string;
+};
+
+export function parsePlaybackStrategy(value: string | null | undefined): PlaybackStrategy {
+  if (value === "classic" || value === "hls") return value;
+  return "auto";
+}
+
+export function parseClientDevice(
+  value: string | null | undefined,
+  userAgent?: string | null
+): ClientDevice {
+  if (value === "desktop" || value === "mobile") return value;
+  const ua = (userAgent || "").toLowerCase();
+  if (
+    ua.includes("iphone") ||
+    ua.includes("ipad") ||
+    ua.includes("android") ||
+    ua.includes("mobile")
+  ) {
+    return "mobile";
+  }
+  return "desktop";
+}
+
+export function resolvePlaybackStrategy(options: {
+  requestedStrategy: PlaybackStrategy;
+  sourceMode: PlaybackMode;
+  device: ClientDevice;
+}): ResolvedPlaybackStrategy {
+  const { requestedStrategy, sourceMode, device } = options;
+  const effectiveStrategy =
+    requestedStrategy === "auto" ? (device === "mobile" ? "hls" : "classic") : requestedStrategy;
+
+  if (sourceMode === "direct") {
+    return {
+      requestedStrategy,
+      effectiveStrategy,
+      effectiveMode: "direct",
+    };
+  }
+
+  if (effectiveStrategy === "hls") {
+    return {
+      requestedStrategy,
+      effectiveStrategy,
+      effectiveMode: "hls",
+    };
+  }
+
+  return {
+    requestedStrategy,
+    effectiveStrategy,
+    effectiveMode: "live",
+  };
+}
 
 /**
  * Determines how a file should be streamed to the browser.

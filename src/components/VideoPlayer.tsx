@@ -70,8 +70,47 @@ export type VideoPlayerProps = {
 
 type StreamInfo = {
   mode: "direct" | "remux" | "transcode";
+  requestedStrategy?: "auto" | "classic" | "hls";
+  effectiveStrategy?: "auto" | "classic" | "hls";
+  effectiveMode?: "direct" | "hls" | "live";
+  fallbackReason?: string;
   duration: number;
 };
+
+type PlaybackStrategy = "auto" | "classic" | "hls";
+type ClientDevice = "desktop" | "mobile";
+type OrientationLock = "any" | "natural" | "landscape" | "portrait";
+type MaybeScreenOrientation = {
+  lock?: (orientation: OrientationLock) => Promise<void>;
+  unlock?: () => void;
+};
+
+const PLAYBACK_STRATEGY_STORAGE_KEY = "aperture.playback.strategy.v1";
+
+function detectClientDevice(): ClientDevice {
+  if (typeof navigator === "undefined") return "desktop";
+  const ua = navigator.userAgent.toLowerCase();
+  if (
+    ua.includes("iphone") ||
+    ua.includes("ipad") ||
+    ua.includes("android") ||
+    ua.includes("mobile")
+  ) {
+    return "mobile";
+  }
+  return "desktop";
+}
+
+function parseStoredStrategy(value: string | null): PlaybackStrategy {
+  if (value === "classic" || value === "hls") return value;
+  return "auto";
+}
+
+function playbackModeLabel(mode: PlaybackStrategy) {
+  if (mode === "classic") return "Classic";
+  if (mode === "hls") return "HLS";
+  return "Auto";
+}
 
 type PromiseLikeResult = Promise<void> | void;
 
@@ -178,6 +217,7 @@ export function VideoPlayer({
   const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didSeekToStart = useRef(false);
   const lastFallbackRestartAt = useRef(0);
+  const pausedForPortraitRef = useRef(false);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -210,11 +250,16 @@ export function VideoPlayer({
   // transcoded fallback through native HLS, which is seekable like direct play.
   const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
   const [supportsNativeHls, setSupportsNativeHls] = useState<boolean | null>(null);
+  const [clientDevice, setClientDevice] = useState<ClientDevice>("desktop");
+  const [isPortraitOrientation, setIsPortraitOrientation] = useState(false);
+  const [playbackStrategy, setPlaybackStrategy] = useState<PlaybackStrategy>("auto");
+  const [playbackNotice, setPlaybackNotice] = useState<string | null>(null);
   // Time offset when we restart a transcoded stream at a non-zero position
   const [timeOffset, setTimeOffset] = useState(0);
 
+  const requestedHls = streamInfo?.effectiveMode === "hls";
   const shouldUseHls = Boolean(
-    hlsUrl && supportsNativeHls && streamInfo && streamInfo.mode !== "direct"
+    hlsUrl && supportsNativeHls && requestedHls && streamInfo?.mode !== "direct"
   );
   const isSeekablePlayback = streamInfo?.mode === "direct" || shouldUseHls;
   const playbackBaseUrl = shouldUseHls && hlsUrl ? hlsUrl : streamUrl;
@@ -222,13 +267,45 @@ export function VideoPlayer({
 
   useEffect(() => {
     setSupportsNativeHls(supportsNativeHlsPlayback());
+    setClientDevice(detectClientDevice());
+    try {
+      setPlaybackStrategy(parseStoredStrategy(localStorage.getItem(PLAYBACK_STRATEGY_STORAGE_KEY)));
+    } catch {
+      setPlaybackStrategy("auto");
+    }
   }, []);
+
+  useEffect(() => {
+    if (clientDevice !== "mobile") {
+      setIsPortraitOrientation(false);
+      return;
+    }
+
+    const updateOrientation = () => {
+      if (typeof window === "undefined") return;
+      const portraitByMedia = window.matchMedia?.("(orientation: portrait)").matches;
+      const portraitBySize = window.innerHeight > window.innerWidth;
+      setIsPortraitOrientation(portraitByMedia || portraitBySize);
+    };
+
+    updateOrientation();
+    window.addEventListener("resize", updateOrientation);
+    window.addEventListener("orientationchange", updateOrientation);
+    return () => {
+      window.removeEventListener("resize", updateOrientation);
+      window.removeEventListener("orientationchange", updateOrientation);
+    };
+  }, [clientDevice]);
 
   // Fetch stream info on mount to determine playback mode
   useEffect(() => {
     let isCancelled = false;
     const infoUrl = streamUrl.replace(/\/stream$/, "/stream/info");
-    fetch(infoUrl)
+    const params = new URLSearchParams({
+      strategy: playbackStrategy,
+      device: clientDevice,
+    });
+    fetch(`${infoUrl}?${params.toString()}`)
       .then((r) => r.json())
       .then((info: StreamInfo) => {
         if (isCancelled) return;
@@ -237,12 +314,48 @@ export function VideoPlayer({
       })
       .catch(() => {
         if (isCancelled) return;
-        setStreamInfo({ mode: "direct", duration: 0 });
+        setStreamInfo({
+          mode: "direct",
+          effectiveMode: "direct",
+          requestedStrategy: playbackStrategy,
+          effectiveStrategy: playbackStrategy,
+          duration: 0,
+        });
       });
     return () => {
       isCancelled = true;
     };
-  }, [streamUrl]);
+  }, [streamUrl, playbackStrategy, clientDevice]);
+
+  useEffect(() => {
+    if (!streamInfo || supportsNativeHls === null) {
+      setPlaybackNotice(null);
+      return;
+    }
+
+    if (
+      playbackStrategy === "hls" &&
+      streamInfo.mode !== "direct" &&
+      streamInfo.effectiveMode === "hls" &&
+      !supportsNativeHls
+    ) {
+      setPlaybackNotice("HLS is not supported by this browser. Using Classic fallback.");
+      return;
+    }
+
+    if (
+      streamInfo.requestedStrategy &&
+      streamInfo.effectiveStrategy &&
+      streamInfo.requestedStrategy !== streamInfo.effectiveStrategy
+    ) {
+      setPlaybackNotice(
+        `${playbackModeLabel(streamInfo.requestedStrategy)} is not available here. Using ${playbackModeLabel(streamInfo.effectiveStrategy)}.`
+      );
+      return;
+    }
+
+    setPlaybackNotice(null);
+  }, [streamInfo, supportsNativeHls, playbackStrategy]);
 
   // Build the effective video src (with ?start= only for the live fragmented MP4 path)
   const getStreamSrc = useCallback(
@@ -542,6 +655,49 @@ export function VideoPlayer({
   useEffect(() => {
     enterFullscreen();
   }, [enterFullscreen]);
+
+  useEffect(() => {
+    if (clientDevice !== "mobile") return;
+    const orientation = (screen.orientation as MaybeScreenOrientation | undefined) ??
+      undefined;
+    const lock = orientation?.lock;
+    if (typeof lock !== "function") return;
+
+    const lockLandscape = () => {
+      safelyHandlePromise(lock.call(orientation, "landscape"));
+    };
+
+    lockLandscape();
+    document.addEventListener("fullscreenchange", lockLandscape);
+    return () => {
+      document.removeEventListener("fullscreenchange", lockLandscape);
+      const unlock = orientation?.unlock;
+      try {
+        if (typeof unlock === "function") {
+          unlock.call(orientation);
+        }
+      } catch {}
+    };
+  }, [clientDevice]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || clientDevice !== "mobile") return;
+
+    if (isPortraitOrientation) {
+      if (!video.paused) {
+        pausedForPortraitRef.current = true;
+        video.pause();
+      }
+      setShowControls(true);
+      return;
+    }
+
+    if (pausedForPortraitRef.current) {
+      pausedForPortraitRef.current = false;
+      safePlay(video);
+    }
+  }, [clientDevice, isPortraitOrientation]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -902,6 +1058,20 @@ export function VideoPlayer({
     setOpenEpisodeSeasonId((prev) => (prev === seasonId ? null : seasonId));
   }, []);
 
+  const handlePlaybackStrategyChange = useCallback(
+    (event: React.ChangeEvent<HTMLSelectElement>) => {
+      const next = parseStoredStrategy(event.target.value);
+      setPlaybackStrategy(next);
+      try {
+        localStorage.setItem(PLAYBACK_STRATEGY_STORAGE_KEY, next);
+      } catch {
+        // Ignore storage failures and keep in-memory preference.
+      }
+      resetHideTimer();
+    },
+    [resetHideTimer]
+  );
+
   return (
     <div
       ref={containerRef}
@@ -966,12 +1136,27 @@ export function VideoPlayer({
         }}
       />
 
+      {clientDevice === "mobile" && isPortraitOrientation ? (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/90 px-6 text-center">
+          <div className="max-w-sm space-y-2">
+            <p className="text-xs uppercase tracking-[0.24em] text-white/70">Landscape required</p>
+            <p className="text-lg font-semibold text-white">Rotate your device to landscape to continue playback.</p>
+          </div>
+        </div>
+      ) : null}
+
       {/* Loading spinner */}
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <Loader2 className="h-12 w-12 animate-spin text-white/80" />
         </div>
       )}
+
+      {playbackNotice ? (
+        <div className="absolute left-1/2 top-4 z-30 w-[min(30rem,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-amber-300/35 bg-black/75 px-4 py-2 text-center text-xs text-amber-100 backdrop-blur">
+          {playbackNotice}
+        </div>
+      ) : null}
 
       {/* Click-to-play overlay when paused and not started */}
       {!isPlaying && currentTime === 0 && timeOffset === 0 && !isLoading && (
@@ -1454,6 +1639,20 @@ export function VideoPlayer({
               {streamInfo?.mode === "remux" ? "remux" : "transcode"}
             </span>
           )}
+
+          <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-white/70">
+            Mode
+            <select
+              value={playbackStrategy}
+              onChange={handlePlaybackStrategyChange}
+              className="rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] uppercase tracking-[0.08em] text-white outline-none"
+              aria-label="Playback mode"
+            >
+              <option value="auto">Auto</option>
+              <option value="classic">Classic</option>
+              <option value="hls">HLS</option>
+            </select>
+          </label>
 
           <div className="ml-auto flex items-center gap-2">
             {mediaId ? (
