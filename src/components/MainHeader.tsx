@@ -77,7 +77,6 @@ export function MainHeader({
   syncing,
   syncProgress,
   onCancelSync,
-  libraryRootPath,
 }: MainHeaderProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [showMobileNav, setShowMobileNav] = useState(false);

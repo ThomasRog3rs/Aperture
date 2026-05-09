@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Aperture, Home, Tv, Film, Settings, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 const STORAGE_KEY = "sidebar-open";
@@ -12,12 +12,11 @@ export function Sidebar() {
   const searchParams = useSearchParams();
   const typeParam = searchParams.get("type");
 
-  const [isOpen, setIsOpen] = useState(false);
-
-  useEffect(() => {
+  const [isOpen, setIsOpen] = useState(() => {
+    if (typeof window === "undefined") return false;
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored !== null) setIsOpen(stored === "true");
-  }, []);
+    return stored !== null ? stored === "true" : false;
+  });
 
   const toggle = () => {
     setIsOpen((prev) => {

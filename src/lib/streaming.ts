@@ -124,13 +124,13 @@ export function createStreamResponse(
   }
 
   if (range) {
-    let { start, end } = range;
+    const { start, end: rangeEnd } = range;
     const isOpenEnded = !rangeHeader?.match(/^bytes=\d+-\d+$/);
     // Only cap open-ended requests (e.g. "bytes=0-") to avoid streaming entire multi-GB files.
     // Explicit ranges (e.g. "bytes=500000-1500000") are served in full.
-    if (isOpenEnded && end - start + 1 > DEFAULT_CHUNK_SIZE) {
-      end = Math.min(start + DEFAULT_CHUNK_SIZE - 1, fileSize - 1);
-    }
+    const end = isOpenEnded && rangeEnd - start + 1 > DEFAULT_CHUNK_SIZE
+      ? Math.min(start + DEFAULT_CHUNK_SIZE - 1, fileSize - 1)
+      : rangeEnd;
     const chunkSize = end - start + 1;
     const stream = fs.createReadStream(resolvedFilePath, { start, end });
     const webStream = readableNodeToWeb(stream);

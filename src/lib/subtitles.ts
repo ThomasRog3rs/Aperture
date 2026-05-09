@@ -6,7 +6,7 @@ import {
   listSubtitlesByMedia,
   deleteSubtitlesByMediaId,
 } from "@/lib/storage";
-import type { SubtitleRow } from "@/lib/storage";
+import type { SubtitleRow } from "@/lib/storage/types";
 
 export const SUBTITLE_EXTENSIONS = [".srt", ".vtt", ".ass", ".ssa", ".sub"] as const;
 

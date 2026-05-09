@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Play, Plus, Info } from "lucide-react";
+import { Play, Info } from "lucide-react";
 import { tmdbImageUrl, formatRuntime } from "@/lib/format";
 import type { Movie, Series } from "@/lib/types";
 
