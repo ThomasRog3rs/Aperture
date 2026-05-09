@@ -36,6 +36,7 @@ import { useOutsideClick } from "@/hooks/useOutsideClick";
 import { usePlaybackPersistence } from "@/hooks/usePlaybackPersistence";
 import { usePointerDrag } from "@/hooks/usePointerDrag";
 import { useSubtitleManager } from "@/hooks/useSubtitleManager";
+import { useVideoKeyboardShortcuts } from "@/hooks/useVideoKeyboardShortcuts";
 import { useVideoCapabilities } from "@/hooks/useVideoCapabilities";
 
 export type {
@@ -83,6 +84,8 @@ export function VideoPlayer({
   const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didSeekToStart = useRef(false);
   const lastFallbackRestartAt = useRef(0);
+  const seekToRef = useRef<(targetTime: number) => void>(() => undefined);
+  const resetHideTimerRef = useRef<() => void>(() => undefined);
 
   const [playbackState, dispatchPlayback] = useReducer(
     playbackReducer,
@@ -238,6 +241,21 @@ export function VideoPlayer({
     dispatchPlayback({ type: "set-muted", value: video.muted });
   }, []);
 
+  const adjustVolumeByDelta = useCallback((delta: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.volume = Math.min(1, Math.max(0, video.volume + delta));
+    dispatchPlayback({ type: "set-volume", value: video.volume });
+  }, []);
+
+  const closeCcPanel = useCallback(() => {
+    dispatchUi({ type: "set-cc-open", value: false });
+  }, []);
+
+  const closeEpisodeSelector = useCallback(() => {
+    dispatchUi({ type: "set-episode-selector-open", value: false });
+  }, []);
+
   const handleVolumeChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const video = videoRef.current;
@@ -356,6 +374,22 @@ export function VideoPlayer({
       value: !uiState.isOverflowMenuOpen,
     });
   }, [setControlsVisible, uiState.isOverflowMenuOpen]);
+
+  useEffect(() => {
+    seekToRef.current = seekTo;
+  }, [seekTo]);
+
+  useEffect(() => {
+    resetHideTimerRef.current = resetHideTimer;
+  }, [resetHideTimer]);
+
+  const seekToFromKeyboard = useCallback((targetTime: number) => {
+    seekToRef.current(targetTime);
+  }, []);
+
+  const resetHideTimerFromKeyboard = useCallback(() => {
+    resetHideTimerRef.current();
+  }, []);
 
   useEffect(() => stopHideTimer, [stopHideTimer]);
 
@@ -676,76 +710,20 @@ export function VideoPlayer({
     onNextEpisode,
   });
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const video = videoRef.current;
-      if (!video) return;
-      if (
-        event.target instanceof HTMLInputElement ||
-        event.target instanceof HTMLTextAreaElement
-      ) {
-        return;
-      }
-
-      switch (event.key) {
-        case " ":
-        case "k":
-          event.preventDefault();
-          if (video.paused) {
-            safePlay(video);
-          } else {
-            video.pause();
-          }
-          break;
-        case "ArrowLeft":
-          event.preventDefault();
-          seekTo(Math.max(0, effectiveTime - 10));
-          break;
-        case "ArrowRight":
-          event.preventDefault();
-          seekTo(Math.min(effectiveDuration || Infinity, effectiveTime + 10));
-          break;
-        case "ArrowUp":
-          event.preventDefault();
-          video.volume = Math.min(1, video.volume + 0.1);
-          dispatchPlayback({ type: "set-volume", value: video.volume });
-          break;
-        case "ArrowDown":
-          event.preventDefault();
-          video.volume = Math.max(0, video.volume - 0.1);
-          dispatchPlayback({ type: "set-volume", value: video.volume });
-          break;
-        case "m":
-          event.preventDefault();
-          video.muted = !video.muted;
-          dispatchPlayback({ type: "set-muted", value: video.muted });
-          break;
-        case "Escape":
-          if (uiState.isCcPanelOpen) {
-            event.preventDefault();
-            dispatchUi({ type: "set-cc-open", value: false });
-            break;
-          }
-          if (uiState.isEpisodeSelectorOpen) {
-            event.preventDefault();
-            dispatchUi({ type: "set-episode-selector-open", value: false });
-          }
-          break;
-      }
-
-      resetHideTimer();
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [
-    effectiveDuration,
+  useVideoKeyboardShortcuts({
+    videoRef,
     effectiveTime,
-    resetHideTimer,
-    seekTo,
-    uiState.isCcPanelOpen,
-    uiState.isEpisodeSelectorOpen,
-  ]);
+    effectiveDuration,
+    isCcPanelOpen: uiState.isCcPanelOpen,
+    isEpisodeSelectorOpen: uiState.isEpisodeSelectorOpen,
+    onTogglePlay: togglePlay,
+    onSeekTo: seekToFromKeyboard,
+    onVolumeDelta: adjustVolumeByDelta,
+    onToggleMute: toggleMute,
+    onCloseCcPanel: closeCcPanel,
+    onCloseEpisodeSelector: closeEpisodeSelector,
+    onUserInteraction: resetHideTimerFromKeyboard,
+  });
 
   const handleVideoTimeUpdate = useCallback(() => {
     const video = videoRef.current;
