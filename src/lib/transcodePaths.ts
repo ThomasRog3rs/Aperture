@@ -1,6 +1,7 @@
 import path from "node:path";
 
-const TRANSCODES_DIR = path.join(process.cwd(), "data", "transcodes");
+import { getTranscodesDir } from "@/lib/runtimeDataPaths";
+
 const SAFE_MEDIA_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 function appendPathSegment(basePath: string, segment: string) {
@@ -23,7 +24,7 @@ export function isSafeRelativePathSegment(segment: string) {
 }
 
 export function getTranscodeDir(mediaId: string) {
-  return appendPathSegment(TRANSCODES_DIR, mediaId);
+  return appendPathSegment(getTranscodesDir(), mediaId);
 }
 
 export function getTranscodedFilePath(mediaId: string) {

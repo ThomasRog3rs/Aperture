@@ -7,6 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "db:backup": "node scripts/backup-db.cjs",
+    "db:restore": "node scripts/restore-db.cjs",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",

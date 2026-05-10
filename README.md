@@ -39,10 +39,13 @@ A local-first movie and TV library manager for macOS, Linux, and Windows. It sca
    MAGNET_API_BASE_URL="http://localhost:8000"
    # Optional override: darwin | linux | win32
    APERTURE_OS="darwin"
+   # Optional override: use an absolute path for persistent SQLite/transcode data
+   APERTURE_DATA_DIR="/absolute/path/to/aperture-data"
    ```
 
    Get an API key at [OMDb](https://www.omdbapi.com/apikey.aspx).
    If `APERTURE_OS` is not set, Aperture auto-detects the running OS.
+   If `APERTURE_DATA_DIR` is not set, Aperture stores runtime data under `./data` relative to the current working directory.
 
 3. **Start the app**
 
@@ -66,6 +69,15 @@ A local-first movie and TV library manager for macOS, Linux, and Windows. It sca
 npm run build
 npm start
 ```
+
+For PM2, keep the working directory and data directory fixed so restarts reuse the same SQLite file:
+
+```bash
+pm2 start ecosystem.config.cjs
+pm2 save
+```
+
+The included [ecosystem.config.cjs](ecosystem.config.cjs) pins `cwd` to the repo root and `APERTURE_DATA_DIR` to the repo's `data` directory.
 
 ## Library structure and formats
 
@@ -160,13 +172,42 @@ MagnetAPI repository: [ThomasRog3rs/MagnetAPI](https://github.com/ThomasRog3rs/M
 
 ## Data storage
 
-Local data is stored in SQLite at `data/aperture.db`:
+Local data is stored in SQLite at `APERTURE_DATA_DIR/aperture.db` when `APERTURE_DATA_DIR` is set, otherwise at `data/aperture.db` under the current working directory:
 
 - Settings (library path)
 - Movies: paths, OMDb metadata, personal rating, watched, soft-delete timestamp
 - Seasons: per-season metadata, rating, watched, soft-delete timestamp
 - Episodes: file paths, episode numbers, watched, soft-delete timestamp
 - Series: derived from season folder paths; optional custom title/poster
+
+### Backup and restore
+
+Create a consistent SQLite backup before a restart:
+
+```bash
+npm run db:backup
+```
+
+This writes a timestamped backup into `data/backups` (or `APERTURE_DATA_DIR/backups`). You can also pass a custom output directory or file path:
+
+```bash
+npm run db:backup -- ./manual-backups
+npm run db:backup -- ./manual-backups/aperture-before-pm2.db
+```
+
+If you ever restart onto an empty library again, stop the app first and then restore the latest backup:
+
+```bash
+npm run db:restore
+```
+
+Or restore a specific backup:
+
+```bash
+npm run db:restore -- ./data/backups/aperture-2026-05-10T12-00-00Z.db
+```
+
+The restore command creates a `pre-restore-*.db` safety snapshot of the current live database before it overwrites `aperture.db`.
 
 ## Notes
 

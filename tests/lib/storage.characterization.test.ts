@@ -1,9 +1,11 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getDb } from "@/lib/db";
+import { closeDb, getDb } from "@/lib/db";
+import { getDbPath } from "@/lib/runtimeDataPaths";
 import {
   countDeletedItems,
   deleteSubtitleById,
@@ -45,20 +47,11 @@ import {
   upsertSubtitle,
 } from "@/lib/storage";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-
-type DbGlobal = typeof globalThis & {
-  __apertureDb?: {
-    close: () => void;
-  };
-};
+const TEST_DATA_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "aperture-storage-"));
+const DATA_DIR = path.join(TEST_DATA_ROOT, "data");
 
 function resetStorageDb() {
-  const globalDb = globalThis as DbGlobal;
-  if (globalDb.__apertureDb) {
-    globalDb.__apertureDb.close();
-    delete globalDb.__apertureDb;
-  }
+  closeDb();
   fs.rmSync(DATA_DIR, { recursive: true, force: true });
 }
 
@@ -154,7 +147,10 @@ function seriesFixture(id: string, overrides: Partial<Parameters<typeof upsertSe
 }
 
 beforeEach(() => {
+  process.env.APERTURE_DATA_DIR = DATA_DIR;
   resetStorageDb();
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.closeSync(fs.openSync(getDbPath(), "w"));
   vi.useRealTimers();
 });
 
@@ -164,6 +160,8 @@ afterEach(() => {
 
 afterAll(() => {
   resetStorageDb();
+  delete process.env.APERTURE_DATA_DIR;
+  fs.rmSync(TEST_DATA_ROOT, { recursive: true, force: true });
 });
 
 describe("storage characterization", () => {

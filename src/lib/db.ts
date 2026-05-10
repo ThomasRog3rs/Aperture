@@ -1,23 +1,44 @@
 import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+
+import { ensureRuntimeDataReady } from "@/lib/runtimeDataPaths";
 
 type DbInstance = InstanceType<typeof Database>;
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_DIR = path.join(__dirname, "../../data");
-const DB_PATH = path.join(DATA_DIR, "aperture.db");
-
 const globalForDb = globalThis as typeof globalThis & {
   __apertureDb?: DbInstance;
+  __apertureDbExitHooksRegistered?: boolean;
 };
 
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+export function closeDb() {
+  const db = globalForDb.__apertureDb;
+  if (!db) {
+    return;
   }
+
+  try {
+    db.pragma("wal_checkpoint(TRUNCATE)");
+  } catch {
+    // Ignore checkpoint failures during shutdown and still close the handle.
+  }
+
+  db.close();
+  delete globalForDb.__apertureDb;
+}
+
+function registerDbExitHooks() {
+  if (globalForDb.__apertureDbExitHooksRegistered) {
+    return;
+  }
+
+  const shutdown = () => {
+    closeDb();
+  };
+
+  process.once("beforeExit", shutdown);
+  process.once("exit", shutdown);
+
+  globalForDb.__apertureDbExitHooksRegistered = true;
 }
 
 function ensureSchema(db: DbInstance) {
@@ -347,11 +368,12 @@ export function getDb(): DbInstance {
     return globalForDb.__apertureDb;
   }
 
-  ensureDataDir();
-  const db = new Database(DB_PATH);
+  const { dbPath } = ensureRuntimeDataReady();
+  const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
   ensureSchema(db);
 
   globalForDb.__apertureDb = db;
+  registerDbExitHooks();
   return db;
 }
