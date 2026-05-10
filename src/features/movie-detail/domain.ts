@@ -1,12 +1,12 @@
 import type { Movie } from "@/lib/types";
+import {
+  buildTitlePosterEditUpdates,
+  formatTimestamp as formatSharedTimestamp,
+  getPosterCandidate as getSharedPosterCandidate,
+} from "@/features/shared/detail-primitives";
 
 export function formatTimestamp(value: number | null) {
-  if (!value) return "—";
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return String(value);
-  }
+  return formatSharedTimestamp(value);
 }
 
 export function dedupeGenres(genres: string[]) {
@@ -24,8 +24,7 @@ export function dedupeGenres(genres: string[]) {
 }
 
 export function getPosterCandidate(posterInput: string, movie: Movie | null) {
-  const trimmed = posterInput.trim();
-  return trimmed || movie?.posterPath || null;
+  return getSharedPosterCandidate(posterInput, movie?.posterPath);
 }
 
 export function hasMissingBasicMovieInfo(movie: Movie | null) {
@@ -34,27 +33,5 @@ export function hasMissingBasicMovieInfo(movie: Movie | null) {
 }
 
 export function buildMovieEditUpdates(movie: Movie, title: string, posterInput: string) {
-  const trimmedTitle = title.trim();
-  if (!trimmedTitle) {
-    return {
-      error: "Title cannot be empty.",
-      updates: {},
-    };
-  }
-
-  const trimmedPoster = posterInput.trim();
-  const nextPoster = trimmedPoster.length === 0 ? null : trimmedPoster;
-  const updates: { titleClean?: string; posterPath?: string | null } = {};
-
-  if (trimmedTitle !== movie.titleClean) {
-    updates.titleClean = trimmedTitle;
-  }
-  if (nextPoster !== (movie.posterPath ?? null)) {
-    updates.posterPath = nextPoster;
-  }
-
-  return {
-    updates,
-  };
+  return buildTitlePosterEditUpdates(movie.titleClean, movie.posterPath, title, posterInput);
 }
-
