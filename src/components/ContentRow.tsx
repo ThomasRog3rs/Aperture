@@ -49,7 +49,7 @@ export function ContentRow({
         {/* Left Arrow */}
         <button
           onClick={() => handleScroll("left")}
-          className="absolute left-0 top-0 bottom-0 z-20 w-12 lg:w-16 bg-gradient-to-r from-background to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-start px-2 lg:px-4 text-white disabled:opacity-0 -ml-2 lg:-ml-4"
+          className="pointer-events-none group-hover:pointer-events-auto absolute left-0 top-0 bottom-0 z-20 w-12 lg:w-16 bg-gradient-to-r from-background to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-start px-2 lg:px-4 text-white disabled:opacity-0 -ml-2 lg:-ml-4"
           aria-label="Scroll left"
         >
           <ChevronLeft className="h-8 w-8 drop-shadow-md transition-transform hover:scale-125" />
@@ -90,6 +90,7 @@ export function ContentRow({
                 <SeasonCard
                   season={entry.season}
                   blurIfXxxRated={blurXxxRated}
+                  variant="compact"
                 />
               )}
             </div>
@@ -99,7 +100,7 @@ export function ContentRow({
         {/* Right Arrow */}
         <button
           onClick={() => handleScroll("right")}
-          className="absolute right-0 top-0 bottom-0 z-20 w-12 lg:w-16 bg-gradient-to-l from-background to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-end px-2 lg:px-4 text-white -mr-2 lg:-mr-4"
+          className="pointer-events-none group-hover:pointer-events-auto absolute right-0 top-0 bottom-0 z-20 w-12 lg:w-16 bg-gradient-to-l from-background to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-end px-2 lg:px-4 text-white -mr-2 lg:-mr-4"
           aria-label="Scroll right"
         >
           <ChevronRight className="h-8 w-8 drop-shadow-md transition-transform hover:scale-125" />
