@@ -49,7 +49,7 @@ function toSeasonWithEpisodes(
 export interface SeriesDetailGateway {
   getSeries(id: string): Promise<{ series: Series; seasons: SeasonWithEpisodes[] }>;
   getFolderImages(id: string): Promise<FolderImage[]>;
-  updateSeries(id: string, updates: UpdateSeriesPayload): Promise<SeriesResponse>;
+  updateSeries(id: string, updates: UpdateSeriesPayload): Promise<{ series: Series; seasons: SeasonWithEpisodes[] }>;
   refreshSeriesMetadata(id: string): Promise<Series>;
   deleteSeries(id: string): Promise<void>;
   launchExternalPlayer(filePath: string): Promise<void>;
@@ -100,7 +100,10 @@ class FetchSeriesDetailGateway implements SeriesDetailGateway {
     if (!response.ok || !data?.series) {
       throw new Error(getResponseError(data, "Failed to update series."));
     }
-    return data;
+    return {
+      series: data.series,
+      seasons: toSeasonWithEpisodes(data.seasons ?? data.series.seasons),
+    };
   }
 
   async refreshSeriesMetadata(id: string) {

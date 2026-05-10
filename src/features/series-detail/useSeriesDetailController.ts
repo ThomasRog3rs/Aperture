@@ -594,10 +594,9 @@ export function useSeriesDetailController({
     setNotice(null);
     try {
       const data = await gateway.updateSeries(series.id, result.updates);
-      const nextSeasons = data.seasons ?? data.series.seasons ?? [];
       applySeriesState(
         data.series,
-        nextSeasons,
+        data.seasons,
         setSeries,
         setSeasons,
         setTitle,
