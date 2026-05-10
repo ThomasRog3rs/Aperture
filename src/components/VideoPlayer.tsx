@@ -38,6 +38,8 @@ import { usePointerDrag } from "@/hooks/usePointerDrag";
 import { useSubtitleManager } from "@/hooks/useSubtitleManager";
 import { useVideoKeyboardShortcuts } from "@/hooks/useVideoKeyboardShortcuts";
 import { useVideoCapabilities } from "@/hooks/useVideoCapabilities";
+import "@/components/video-player/video-player.css";
+import { useAutoHideCursor } from "@/hooks/useAutoHideCursor";
 
 export type {
   VideoPlayerEpisodeListItem,
@@ -724,6 +726,8 @@ export function VideoPlayer({
     onCloseEpisodeSelector: closeEpisodeSelector,
     onUserInteraction: resetHideTimerFromKeyboard,
   });
+
+  useAutoHideCursor(containerRef, playbackState, resetHideTimerRef);
 
   const handleVideoTimeUpdate = useCallback(() => {
     const video = videoRef.current;

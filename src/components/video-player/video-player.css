@@ -1,0 +1,4 @@
+.cursor-hidden,
+.cursor-hidden * {
+  cursor: none !important;
+}
