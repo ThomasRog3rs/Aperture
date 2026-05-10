@@ -183,7 +183,7 @@ export function MovieCard({ movie, onPlay, onWatched, blurIfXxxRated = false, va
 
       {/* Rating badge — top right */}
       {movie.tmdbRating ? (
-        <div className="pointer-events-none absolute right-2 top-2 z-30 flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-md">
+        <div className="pointer-events-none absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-md">
           <Star className="h-3 w-3 text-amber-400" />
           {formatRating(movie.tmdbRating)}
         </div>

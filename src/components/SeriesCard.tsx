@@ -161,7 +161,7 @@ export function SeriesCard({ series, blurIfXxxRated = false, variant = "full" }:
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-2/5 bg-gradient-to-t from-black/80 to-transparent" />
 
       {/* Season count badge — top right */}
-      <div className="pointer-events-none absolute right-2 top-2 z-30 flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-md">
+      <div className="pointer-events-none absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-md">
         <Layers className="h-3 w-3" />
         {seasonsLabel}
       </div>
