@@ -4,6 +4,14 @@ import { useMovieDetailController } from "@/features/movie-detail/useMovieDetail
 import type { MovieDetailGateway } from "@/features/movie-detail/gateway";
 import { createMovie } from "../../helpers/createMovie";
 
+const searchParamsState = vi.hoisted(() => ({
+  value: new URLSearchParams(),
+}));
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => searchParamsState.value,
+}));
+
 afterEach(() => {
   cleanup();
 });
@@ -24,7 +32,24 @@ function createGatewayMock(
 }
 
 describe("useMovieDetailController", () => {
+  it("auto-opens the player when autoplay deep-link params are present", async () => {
+    const movie = createMovie({ id: "movie-42", watchProgressSeconds: 12 });
+    const gateway = createGatewayMock({
+      getMovie: vi.fn().mockResolvedValue(movie),
+    });
+    searchParamsState.value = new URLSearchParams("autoplay=1&t=87");
+
+    const { result } = renderHook(() =>
+      useMovieDetailController({ movieId: movie.id, gateway })
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.showPlayer).toBe(true));
+    expect(result.current.movie?.watchProgressSeconds).toBe(87);
+  });
+
   it("loads movie data and initializes edit state", async () => {
+    searchParamsState.value = new URLSearchParams();
     const movie = createMovie({
       id: "movie-42",
       titleClean: "Interstellar",
@@ -53,6 +78,7 @@ describe("useMovieDetailController", () => {
   });
 
   it("prevents save when title is blank", async () => {
+    searchParamsState.value = new URLSearchParams();
     const movie = createMovie();
     const updateMovie = vi.fn().mockResolvedValue(movie);
     const gateway = createGatewayMock({
@@ -78,6 +104,7 @@ describe("useMovieDetailController", () => {
   });
 
   it("updates watched state and shows success message", async () => {
+    searchParamsState.value = new URLSearchParams();
     const movie = createMovie({ watched: false });
     const updatedMovie = createMovie({ watched: true });
     const updateMovie = vi.fn().mockResolvedValue(updatedMovie);
@@ -105,6 +132,7 @@ describe("useMovieDetailController", () => {
   });
 
   it("does not delete when confirmation is rejected", async () => {
+    searchParamsState.value = new URLSearchParams();
     const movie = createMovie();
     const deleteMovie = vi.fn().mockResolvedValue(undefined);
     const gateway = createGatewayMock({

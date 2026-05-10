@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Clapperboard, FolderOpen, Loader2 } from "lucide-react";
+import { ContinueWatchingRow } from "@/components/ContinueWatchingRow";
 import { ContentRow } from "@/components/ContentRow";
 import { HeroFeatured } from "@/components/HeroFeatured";
 import { MagnetFallbackResults } from "@/components/MagnetFallbackResults";
@@ -12,6 +13,7 @@ import { MovieGrid } from "@/components/MovieGrid";
 import { StatusBanner } from "@/components/StatusBanner";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import type { MagnetSearchResult, Movie, Series } from "@/lib/types";
+import type { ContinueWatchingItem } from "@/lib/types";
 
 type SyncProgress = {
   phase: "scanning" | "movies" | "seasons" | "cleanup" | "saving";
@@ -96,6 +98,7 @@ export function LibraryView() {
   const [fallbackError, setFallbackError] = useState<string | null>(null);
   const [pendingMagnet, setPendingMagnet] =
     useState<MagnetSearchResult | null>(null);
+  const [continueWatchingItems, setContinueWatchingItems] = useState<ContinueWatchingItem[]>([]);
 
   useEffect(() => {
     const typeParam = searchParams.get("type") as
@@ -135,6 +138,12 @@ export function LibraryView() {
     setAvailablePeople(data.people ?? []);
   }, []);
 
+  const fetchContinueWatching = useCallback(async () => {
+    const response = await fetch("/api/continue-watching");
+    const data = (await response.json()) as { items: ContinueWatchingItem[] };
+    setContinueWatchingItems(data.items ?? []);
+  }, []);
+
   const fetchLibrary = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
@@ -157,6 +166,12 @@ export function LibraryView() {
     setSeries(seriesData.series ?? []);
     setLoading(false);
   }, [debouncedQuery, genre, minRating, person, sort, watched]);
+
+  useEffect(() => {
+    fetchContinueWatching().catch(() => {
+      // Silently fail — Continue Watching is best-effort
+    });
+  }, [fetchContinueWatching]);
 
   useEffect(() => {
     fetchSettings().catch(() => {
@@ -244,6 +259,7 @@ export function LibraryView() {
               message: `Synced ${summary.label} (${summary.notFound} not found${deletedPart}, ${summary.errors} errors).${folderPart}`,
             });
             await fetchLibrary();
+            fetchContinueWatching().catch(() => {});
             fetchFilterOptions().catch(() => {
               setNotice((current) =>
                 current?.tone === "success"
@@ -272,7 +288,7 @@ export function LibraryView() {
       setSyncProgress(null);
       syncAbortRef.current = null;
     }
-  }, [fetchFilterOptions, fetchLibrary]);
+  }, [fetchFilterOptions, fetchLibrary, fetchContinueWatching]);
 
   const handleCancelSync = useCallback(() => {
     syncAbortRef.current?.abort();
@@ -613,6 +629,9 @@ export function LibraryView() {
               <HeroFeatured item={featuredMovieItem} onPlay={handlePlay} />
 
               <div className="relative z-20 mt-10 flex w-full max-w-7xl mx-auto flex-col gap-6 pb-16 sm:mt-14 px-6 lg:px-12 2xl:px-16">
+                {continueWatchingItems.length > 0 && (
+                  <ContinueWatchingRow items={continueWatchingItems} />
+                )}
                 <ContentRow
                   title=""
                   items={unwatchedCarouselItems}

@@ -34,6 +34,8 @@ export type MovieRow = Omit<MovieUpsert, "genres" | "userGenres"> & {
   selectedSubtitleId?: string | null;
   subtitlesEnabled?: number;
   watchProgressSeconds?: number;
+  watchProgressUpdatedAt?: number;
+  durationSeconds?: number;
 };
 
 export type SeasonUpsert = {
@@ -85,6 +87,8 @@ export type EpisodeRow = EpisodeUpsert & {
   selectedSubtitleId?: string | null;
   subtitlesEnabled?: number;
   watchProgressSeconds?: number;
+  watchProgressUpdatedAt?: number;
+  durationSeconds?: number;
   transcodeStatus?: string;
   transcodedPath?: string | null;
   hlsPath?: string | null;

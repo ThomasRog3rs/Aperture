@@ -244,6 +244,28 @@ export function useSeriesPlaybackController({
     [orderedEpisodes, playbackMode, startEpisodePlayback]
   );
 
+  const handlePlayDeepLink = useCallback(
+    (episodeId: string, startTime?: number) => {
+      const selectedEpisode = orderedEpisodes.find(
+        ({ episode }) => episode.id === episodeId
+      )?.episode;
+
+      if (!selectedEpisode) {
+        return false;
+      }
+
+      playEpisode(selectedEpisode, {
+        mode: "continue",
+        startTime:
+          typeof startTime === "number" && Number.isFinite(startTime) && startTime > 0
+            ? startTime
+            : undefined,
+      });
+      return true;
+    },
+    [orderedEpisodes, playEpisode]
+  );
+
   const handlePlayExternal = useCallback(
     async (episode: Episode) => {
       if (!episode.filePath) {
@@ -337,6 +359,7 @@ export function useSeriesPlaybackController({
     handlePlayPreviousEpisode,
     handlePlayNextEpisode,
     handleSelectEpisode,
+    handlePlayDeepLink,
     handleEpisodeTimeUpdate,
     handleEpisodeEnded,
     handleRandomSessionAction,

@@ -44,6 +44,10 @@ export type Movie = {
   storyboardPath?: string | null;
   /** Playback position in seconds (for resume) */
   watchProgressSeconds?: number;
+  /** Unix timestamp (seconds) of last progress update — used to sort Continue Watching */
+  watchProgressUpdatedAt?: number;
+  /** Last known total duration in seconds — used to render the progress bar */
+  durationSeconds?: number;
   /** Selected subtitle file id (persisted preference) */
   selectedSubtitleId?: string | null;
   /** Whether subtitles are enabled for this movie */
@@ -106,6 +110,10 @@ export type Episode = {
   storyboardPath?: string | null;
   /** Playback position in seconds (for resume) */
   watchProgressSeconds?: number;
+  /** Unix timestamp (seconds) of last progress update — used to sort Continue Watching */
+  watchProgressUpdatedAt?: number;
+  /** Last known total duration in seconds — used to render the progress bar */
+  durationSeconds?: number;
   /** Selected subtitle file id (persisted preference) */
   selectedSubtitleId?: string | null;
   /** Whether subtitles are enabled for this episode */
@@ -113,6 +121,24 @@ export type Episode = {
 };
 
 export type SeasonWithEpisodes = Season & { episodes: Episode[] };
+
+export type ContinueWatchingItem =
+  | {
+      type: "movie";
+      movie: Movie;
+      progressSeconds: number;
+      durationSeconds: number;
+      updatedAt: number;
+    }
+  | {
+      type: "episode";
+      episode: Episode;
+      season: Season;
+      series: Series;
+      progressSeconds: number;
+      durationSeconds: number;
+      updatedAt: number;
+    };
 
 export type SubtitleFile = {
   id: string;

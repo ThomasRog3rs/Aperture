@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { StatusBanner } from "@/components/StatusBanner";
 import { VideoPlayer } from "@/components/VideoPlayer";
@@ -28,8 +28,10 @@ import { useSeriesPlaybackController } from "./useSeriesPlaybackController";
 export default function SeriesDetailPage() {
   const params = useParams<{ id?: string | string[] }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const seriesId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const [notice, setNotice] = useState<SeriesNotice | null>(null);
+  const didApplyDeepLinkRef = useRef(false);
 
   const data = useSeriesDetailData({ seriesId, setNotice });
   const playback = useSeriesPlaybackController({
@@ -64,6 +66,25 @@ export default function SeriesDetailPage() {
     () => getHasMissingBasicInfo(data.series, seriesRating),
     [data.series, seriesRating]
   );
+
+  useEffect(() => {
+    if (didApplyDeepLinkRef.current) return;
+    if (!data.series) return;
+
+    const autoplay = searchParams.get("autoplay");
+    if (autoplay !== "1" && autoplay !== "true") return;
+
+    const episodeId = searchParams.get("episodeId");
+    if (!episodeId) return;
+
+    const timeParam = searchParams.get("t");
+    const parsed = timeParam == null ? NaN : Number(timeParam);
+    const startTime = Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+
+    if (playback.handlePlayDeepLink(episodeId, startTime)) {
+      didApplyDeepLinkRef.current = true;
+    }
+  }, [data.series, playback, searchParams]);
 
   return (
     <div className="min-h-screen pb-20">

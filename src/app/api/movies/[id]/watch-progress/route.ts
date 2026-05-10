@@ -21,10 +21,14 @@ export async function PATCH(
 
   const db = getDb();
 
-  // Update watch progress
+  // Update watch progress, duration, and recency timestamp
   db.prepare(
-    "UPDATE movies SET watchProgressSeconds = ? WHERE id = ?"
+    "UPDATE movies SET watchProgressSeconds = ?, watchProgressUpdatedAt = unixepoch() WHERE id = ?"
   ).run(Math.round(currentTime), id);
+
+  if (typeof duration === "number" && duration > 0) {
+    db.prepare("UPDATE movies SET durationSeconds = ? WHERE id = ?").run(Math.round(duration), id);
+  }
 
   // Auto-mark as watched at 90% completion
   if (typeof duration === "number" && duration > 0 && currentTime / duration >= 0.9) {

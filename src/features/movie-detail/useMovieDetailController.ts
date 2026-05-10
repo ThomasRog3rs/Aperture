@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { tmdbImageUrl } from "@/lib/format";
 import type { Movie } from "@/lib/types";
 import {
@@ -57,6 +58,7 @@ export function useMovieDetailController({
   confirmDelete,
 }: UseMovieDetailControllerOptions) {
   const [movie, setMovie] = useState<Movie | null>(null);
+  const searchParams = useSearchParams();
   const [title, setTitle] = useState("");
   const [posterInput, setPosterInput] = useState("");
   const [folderImages, setFolderImages] = useState<FolderImage[]>([]);
@@ -77,6 +79,7 @@ export function useMovieDetailController({
   const [deleting, setDeleting] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
+  const [didApplyDeepLink, setDidApplyDeepLink] = useState(false);
 
   const askConfirmDelete = useMemo(() => {
     if (confirmDelete) return confirmDelete;
@@ -147,6 +150,32 @@ export function useMovieDetailController({
   useEffect(() => {
     void fetchMovie();
   }, [fetchMovie]);
+
+  useEffect(() => {
+    setDidApplyDeepLink(false);
+  }, [movieId]);
+
+  useEffect(() => {
+    if (didApplyDeepLink) return;
+    if (!movie) return;
+
+    const autoplay = searchParams.get("autoplay");
+    if (autoplay !== "1" && autoplay !== "true") return;
+
+    const timeParam = searchParams.get("t");
+    const parsed = timeParam == null ? NaN : Number(timeParam);
+    const startTime = Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+
+    if (startTime != null && startTime !== movie.watchProgressSeconds) {
+      setMovie((current) =>
+        current ? { ...current, watchProgressSeconds: startTime } : current
+      );
+    }
+
+    setShowPlayer(true);
+    setNotice(null);
+    setDidApplyDeepLink(true);
+  }, [didApplyDeepLink, movie, searchParams]);
 
   useEffect(() => {
     const trimmed = posterInput.trim();
@@ -439,4 +468,3 @@ export function useMovieDetailController({
     handlePlayerError,
   };
 }
-

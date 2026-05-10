@@ -6,6 +6,9 @@ import type { AnchorHTMLAttributes } from "react";
 import type { Episode, SeasonWithEpisodes, Series } from "@/lib/types";
 
 const routerPush = vi.fn();
+const searchParamsState = vi.hoisted(() => ({
+  value: new URLSearchParams(),
+}));
 
 const apiMocks = vi.hoisted(() => ({
   fetchSeriesDetail: vi.fn(),
@@ -23,6 +26,7 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "series-1" }),
   useRouter: () => ({ push: routerPush }),
+  useSearchParams: () => searchParamsState.value,
 }));
 
 vi.mock("next/link", () => ({
@@ -139,6 +143,7 @@ function createSeriesDetail() {
 describe("SeriesDetailPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    searchParamsState.value = new URLSearchParams();
     apiMocks.fetchSeriesDetail.mockResolvedValue(createSeriesDetail());
     apiMocks.fetchFolderImages.mockResolvedValue({
       images: [{ name: "poster.jpg", url: "/poster.jpg" }],
@@ -179,6 +184,20 @@ describe("SeriesDetailPage", () => {
     expect(screen.getByDisplayValue("Sample Series")).toBeTruthy();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Play" })[0]);
+    await waitFor(() =>
+      expect(screen.getByTestId("video-player").textContent).toContain(
+        "Episode 1 — Pilot"
+      )
+    );
+  });
+
+  it("auto-plays a deep-linked episode at continue-watching time", async () => {
+    searchParamsState.value = new URLSearchParams(
+      "autoplay=1&episodeId=episode-1&t=87"
+    );
+
+    render(<SeriesDetailPage />);
+
     await waitFor(() =>
       expect(screen.getByTestId("video-player").textContent).toContain(
         "Episode 1 — Pilot"

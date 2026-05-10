@@ -339,6 +339,19 @@ function ensureSchema(db: DbInstance) {
   if (!episodeColNames.has("subtitlesEnabled")) {
     db.exec("ALTER TABLE episodes ADD COLUMN subtitlesEnabled INTEGER NOT NULL DEFAULT 0");
   }
+  if (!episodeColNames.has("watchProgressUpdatedAt")) {
+    db.exec("ALTER TABLE episodes ADD COLUMN watchProgressUpdatedAt INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!episodeColNames.has("durationSeconds")) {
+    db.exec("ALTER TABLE episodes ADD COLUMN durationSeconds INTEGER NOT NULL DEFAULT 0");
+  }
+
+  if (!columnNames.has("watchProgressUpdatedAt")) {
+    db.exec("ALTER TABLE movies ADD COLUMN watchProgressUpdatedAt INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!columnNames.has("durationSeconds")) {
+    db.exec("ALTER TABLE movies ADD COLUMN durationSeconds INTEGER NOT NULL DEFAULT 0");
+  }
 
   const scanStateCols = db
     .prepare("PRAGMA table_info(folder_scan_state)")
