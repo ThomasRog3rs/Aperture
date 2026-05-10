@@ -1,10 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 
 type DbInstance = InstanceType<typeof Database>;
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DATA_DIR = path.join(__dirname, "../../data");
 const DB_PATH = path.join(DATA_DIR, "aperture.db");
 
 const globalForDb = globalThis as typeof globalThis & {
