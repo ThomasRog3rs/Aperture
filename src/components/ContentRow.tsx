@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import type { LucideIcon } from "lucide-react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { MovieCard } from "./MovieCard";
 import { SeriesCard } from "./SeriesCard";
@@ -9,6 +10,7 @@ import type { Movie, Season, Series } from "@/lib/types";
 
 type ContentRowProps = {
   title: string;
+  icon?: LucideIcon;
   items: Array<
     | { type: "movie"; movie: Movie }
     | { type: "season"; season: Season }
@@ -21,6 +23,7 @@ type ContentRowProps = {
 
 export function ContentRow({
   title,
+  icon: Icon,
   items,
   onPlayMovie,
   onWatchedMovie,
@@ -41,9 +44,12 @@ export function ContentRow({
   return (
     <div className={`flex flex-col w-full ${title ? "gap-3 py-4" : "pt-0 pb-4"}`}>
       {title ? (
-        <h2 className="text-xl font-bold tracking-tight text-foreground">
-          {title}
-        </h2>
+        <div className="flex items-center gap-2">
+          {Icon ? <Icon className="h-4 w-4 text-accent" /> : null}
+          <h2 className="text-xl font-bold tracking-tight text-foreground">
+            {title}
+          </h2>
+        </div>
       ) : null}
       <div className="group relative w-full">
         {/* Left Arrow */}

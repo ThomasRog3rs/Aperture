@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Clapperboard, FolderOpen, Loader2 } from "lucide-react";
+import { Clapperboard, FolderOpen, Loader2, Sparkles, Star, Tv } from "lucide-react";
 import { ContinueWatchingRow } from "@/components/ContinueWatchingRow";
 import { ContentRow } from "@/components/ContentRow";
 import { HeroFeatured } from "@/components/HeroFeatured";
@@ -634,6 +634,7 @@ export function LibraryView() {
                 )}
                 <ContentRow
                   title="Something New"
+                  icon={Sparkles}
                   items={unwatchedCarouselItems}
                   onPlayMovie={handlePlay}
                   onWatchedMovie={handleWatched}
@@ -642,6 +643,7 @@ export function LibraryView() {
 
                 <ContentRow
                   title="Top Rated Movies"
+                  icon={Star}
                   items={items
                     .filter(
                       (entry) =>
@@ -655,6 +657,7 @@ export function LibraryView() {
                 />
                 <ContentRow
                   title="Top Rated TV Shows"
+                  icon={Tv}
                   items={items
                     .filter(
                       (entry) =>
