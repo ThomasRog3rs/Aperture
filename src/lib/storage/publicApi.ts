@@ -223,6 +223,13 @@ export function updateEpisode(id: string, updates: EpisodeUpdate) {
   episodeRepository.updateEpisode(id, updates);
 }
 
+export function recomputeSeasonWatched(seasonId: string) {
+  const episodes = episodeRepository.getEpisodesBySeasonId(seasonId);
+  const watched = episodes.length > 0 && episodes.every((e) => Boolean(e.watched));
+  // store as integer flag like other updates
+  seasonRepository.updateSeason(seasonId, { watched: watched ? 1 : 0 });
+}
+
 export function markEpisodesDeletedNotInSeason(seasonId: string, filePaths: string[]) {
   episodeRepository.markEpisodesDeletedNotInSeason(seasonId, filePaths);
 }

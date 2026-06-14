@@ -55,6 +55,22 @@ export async function PATCH(
   try {
     updateEpisode(id, updates);
 
+    // Recompute and persist the parent season's watched flag so denormalized
+    // season.watched stays in sync with episode state.
+    const changedEpisode = getEpisodeById(id);
+    if (changedEpisode) {
+      try {
+        // recomputeSeasonWatched may be a no-op if there are no episodes
+        // or if the value is already correct.
+        // Import via public storage API.
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { recomputeSeasonWatched } = await import("@/lib/storage");
+        recomputeSeasonWatched(changedEpisode.seasonId);
+      } catch {
+        // Best-effort: if recompute fails, don't block the episode response.
+      }
+    }
+
     const episode = getEpisodeById(id);
     if (!episode) {
       return NextResponse.json(
