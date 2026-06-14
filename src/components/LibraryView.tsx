@@ -421,7 +421,7 @@ export function LibraryView() {
   }, [movies, series]);
 
   const unwatchedCarouselItems = useMemo(() => {
-    const RESERVOIR_SIZE = 15;
+    const RESERVOIR_SIZE = 20;
     type Entry =
       | { type: "movie"; movie: Movie }
       | { type: "series"; series: Series };
@@ -633,11 +633,11 @@ export function LibraryView() {
                   <ContinueWatchingRow items={continueWatchingItems} />
                 )}
                 <ContentRow
-                  title=""
+                  title="Something New"
                   items={unwatchedCarouselItems}
                   onPlayMovie={handlePlay}
                   onWatchedMovie={handleWatched}
-                  blurXxxRated={false}
+                  blurXxxRated={true}
                 />
 
                 <ContentRow
@@ -651,7 +651,7 @@ export function LibraryView() {
                     .slice(0, 20)}
                   onPlayMovie={handlePlay}
                   onWatchedMovie={handleWatched}
-                  blurXxxRated={false}
+                  blurXxxRated={true}
                 />
                 <ContentRow
                   title="Top Rated TV Shows"
@@ -665,7 +665,7 @@ export function LibraryView() {
                     .slice(0, 20)}
                   onPlayMovie={handlePlay}
                   onWatchedMovie={handleWatched}
-                  blurXxxRated={false}
+                  blurXxxRated={true}
                 />
               </div>
             </div>
