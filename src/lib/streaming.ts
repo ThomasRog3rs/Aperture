@@ -13,6 +13,7 @@ const VIDEO_CONTENT_TYPES: Record<string, string> = {
   ".mpg": "video/mpeg",
   ".mpeg": "video/mpeg",
   ".webm": "video/webm",
+  ".ts": "video/mp2t",
 };
 
 export function getVideoContentType(filePath: string): string | null {

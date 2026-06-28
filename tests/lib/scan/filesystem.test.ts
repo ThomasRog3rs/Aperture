@@ -68,7 +68,7 @@ describe("listVideoFiles", () => {
   });
 
   it("accepts all supported extensions", async () => {
-    const extensions = ["mkv", "mp4", "m4v", "mov", "avi", "wmv", "mpg", "mpeg"];
+    const extensions = ["mkv", "mp4", "m4v", "mov", "avi", "wmv", "mpg", "mpeg", "ts"];
     for (const ext of extensions) {
       const name = `file.${ext}`;
       const fsr = makeMockFsr(

@@ -13,6 +13,7 @@ export const VIDEO_EXTENSIONS = new Set([
   ".wmv",
   ".mpg",
   ".mpeg",
+  ".ts",
 ]);
 
 export interface FileSystemReader {
