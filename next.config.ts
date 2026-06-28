@@ -4,10 +4,10 @@ const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
   outputFileTracingExcludes: {
-    // Runtime-generated HLS/storyboard artifacts live under data/transcodes and
-    // are discovered from disk at request time, so they should not be traced
-    // into the build output.
-    "/*": ["data/transcodes/**"],
+    // The data directory holds user media files and runtime-generated artifacts.
+    // They are discovered from disk at request time and must not be traced into
+    // the build output — doing so would make the pattern overly broad and slow.
+    "/*": ["data/**"],
   },
   images: {
     localPatterns: [

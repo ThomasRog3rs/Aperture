@@ -33,20 +33,35 @@ function resolvePlatform(): NodeJS.Platform {
   return normalizePlatform(process.env.APERTURE_OS) ?? process.platform;
 }
 
-function getOpenCommand(
+// Each branch uses a static command string so Turbopack can narrow the pattern
+// rather than producing an overly broad dynamic union.
+function openFileForPlatform(
   filePath: string,
   platform: NodeJS.Platform
-): { command: string; args: string[] } | null {
+): Promise<Response> | null {
+  const toResponse = (error: Error | null): Response =>
+    error
+      ? NextResponse.json({ error: "Failed to open file." }, { status: 500 })
+      : NextResponse.json({ status: "Playing" });
+
   if (platform === "darwin") {
-    return { command: "open", args: [filePath] };
+    return new Promise((resolve) =>
+      execFile("open", [filePath], (err) => resolve(toResponse(err)))
+    );
   }
 
   if (platform === "linux") {
-    return { command: "xdg-open", args: [filePath] };
+    return new Promise((resolve) =>
+      execFile("xdg-open", [filePath], (err) => resolve(toResponse(err)))
+    );
   }
 
   if (platform === "win32") {
-    return { command: "cmd", args: ["/c", "start", "", filePath] };
+    return new Promise((resolve) =>
+      execFile("cmd", ["/c", "start", "", filePath], (err) =>
+        resolve(toResponse(err))
+      )
+    );
   }
 
   return null;
@@ -91,28 +106,16 @@ export async function POST(request: Request) {
   }
 
   const platform = resolvePlatform();
-  const openCommand = getOpenCommand(resolvedFile, platform);
-  if (!openCommand) {
+  const result = openFileForPlatform(resolvedFile, platform);
+  if (!result) {
     return NextResponse.json(
-      { error: `Playing files is not supported on this platform: ${platform}.` },
+      {
+        error: `Playing files is not supported on this platform: ${platform}.`,
+      },
       { status: 501 }
     );
   }
 
-  return new Promise<Response>((resolve) => {
-    execFile(openCommand.command, openCommand.args, (error) => {
-      if (error) {
-        resolve(
-          NextResponse.json(
-            { error: "Failed to open file." },
-            { status: 500 }
-          )
-        );
-        return;
-      }
-
-      resolve(NextResponse.json({ status: "Playing" }));
-    });
-  });
+  return result;
 }
 
